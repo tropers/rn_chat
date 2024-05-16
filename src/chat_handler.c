@@ -115,6 +115,7 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
         }
 
         list_add_safe(&peer_mutex, &peer_list, new_peer);
+        free(entry_header_buf);
     }
 
     char *buffer = NULL;
