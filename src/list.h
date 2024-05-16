@@ -14,14 +14,13 @@ typedef struct {
     uint16_t port;
     double heartbeatTimer;
     BOOL isNew;
-    
+
     char *name;
 } peer;
 
 // Peer list node datatype
 typedef struct list_node {
     peer *data;
-    
     struct list_node *next;
 } list_node;
 

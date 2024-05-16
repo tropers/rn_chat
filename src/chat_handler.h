@@ -40,13 +40,7 @@
 
 #define BOOL char
 
-void *receiver_thread_func();
 void handle(BOOL use_sctp, int sctp_hbinterval);
-int connect_to_peer(uint32_t destinationIP, uint16_t destinationPort, BOOL use_sctp);
-void send_disconnect();
-void send_failed(int socket);
-void create_enter_req_data(char **packet_data, int *packet_len);
-void recv_packet(int socket, BOOL use_sctp);
 
 // Packet datatype
 typedef struct {
