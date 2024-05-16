@@ -82,7 +82,7 @@ enter_request create_enter_req_data(chat_application_context *ctx)
 
         data = realloc(data, total_length);
         memcpy(data + previous_total_length, entry_header, entry_header_length);
-        memcpy(data + previous_total_length, name, name_length);
+        memcpy(data + previous_total_length + entry_header_length, name, name_length);
     }
 
     return (enter_request){
