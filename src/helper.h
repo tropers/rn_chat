@@ -1,13 +1,6 @@
-//================================================
-// HELPER FUNCTIONS
-//================================================
+#ifndef HELPER_H
+#define HELPER_H
 
-void chomp(char *s)
-{
-    while (*s && *s != '\n' && *s != '\r')
-    {
-        s++;
-    }
+void chomp(char *s);
 
-    *s = 0;
-}
+#endif

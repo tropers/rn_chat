@@ -43,14 +43,10 @@ typedef struct
     char *data;
 } packet;
 
-// Thread args for SCTP
-typedef struct
-{
-    chat_application_context *ctx;
-    int sctp_hbinterval;
-} receiver_thread_args;
-
 void handle(BOOL use_sctp, int sctp_hbinterval);
 packet create_packet(char version, char type, short length, char *data);
+enter_request create_enter_req_data(chat_application_context *ctx);
+void send_packet(int sock, packet *pack);
+void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length);
 
 #endif
