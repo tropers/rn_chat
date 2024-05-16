@@ -1,8 +1,10 @@
 # gitignore
 
-bin/*
-obj/*
+build/*
 .vscode
 .project
 .cproject
 .settings/*
+
+*.o
+*.d

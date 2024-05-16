@@ -24,7 +24,7 @@ main(int argc, char *argv): int
       <w>350</w>
       <h>210</h>
     </coordinates>
-    <panel_attributes>chat_handler
+    <panel_attributes>chat
 --
 peer_list: peer_list*
 peer_mutex: pthread_mutex_t*

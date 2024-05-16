@@ -4,10 +4,6 @@
 
 #include "list.h"
 
-//================================================
-// PEER LIST FUNCTIONS
-//================================================
-
 /* Creates a new list */
 list_node *list_new() {
     list_node *head = malloc(sizeof(list_node));

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <pthread.h>
 
-#include "chat_handler.h"
+#include "constants.h"
 
 // Peer datatype
 typedef struct {

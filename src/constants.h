@@ -1,15 +1,3 @@
-/**
- * chat_handler.h
- * 
- * Contains all the datastructures and function headers for
- * the chat application
- */
-
-#ifndef CHAT_HANDLER_H
-#define CHAT_HANDLER_H
-
-#include <stdint.h>
-
 #define PORT                6969
 
 #define CHAT_VERSION        "v0.1"
@@ -39,22 +27,3 @@
 #define MSECS_IN_1SEC       1000
 
 #define BOOL char
-
-void handle(BOOL use_sctp, int sctp_hbinterval);
-
-// Packet datatype
-typedef struct {
-    char version;
-    char type;
-    short length;
-
-    char *data;
-} packet;
-
-// Thread args for SCTP
-typedef struct {
-    BOOL use_sctp;
-    int sctp_hbinterval;
-} receiver_thread_args;
-
-#endif

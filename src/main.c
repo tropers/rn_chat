@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "chat_handler.h"
+#include "chat.h"
 
 // Usage string
 static char *usage = "Usage: chat -sctp INTERVAL_TIME\n\n\
