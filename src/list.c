@@ -1,6 +1,8 @@
-#include "list.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
+
+#include "list.h"
 
 //================================================
 // PEER LIST FUNCTIONS
@@ -79,6 +81,12 @@ void list_add(list_node **head, peer *data)
     }
 }
 
+void list_add_safe(pthread_mutex_t *mutex, list_node **head, peer *data) {
+    pthread_mutex_lock(mutex);
+    list_add(head, data);
+    pthread_mutex_unlock(mutex);
+}
+
 /* Removes an item from the list */
 void list_remove(list_node **head, uint32_t ip_addr)
 {
@@ -107,6 +115,12 @@ void list_remove(list_node **head, uint32_t ip_addr)
     }
 }
 
+void list_remove_safe(pthread_mutex_t *mutex, list_node **head, uint32_t ip_addr) {
+    pthread_mutex_lock(mutex);
+    list_remove(head, ip_addr);
+    pthread_mutex_unlock(mutex);
+}
+
 int list_size(list_node *head)
 {
     int size = 0;
@@ -115,6 +129,14 @@ int list_size(list_node *head)
     {
         ++size;
     }
+
+    return size;
+}
+
+int list_size_safe(pthread_mutex_t *mutex, list_node *head) {
+    pthread_mutex_lock(mutex);
+    int size = list_size(head);
+    pthread_mutex_unlock(mutex);
 
     return size;
 }
@@ -130,4 +152,10 @@ void list_free(list_node *head)
         free(current);
         current = next;
     }
+}
+
+void list_free_safe(pthread_mutex_t *mutex, list_node *head) {
+    pthread_mutex_lock(mutex);
+    list_free(head);
+    pthread_mutex_unlock(mutex);
 }

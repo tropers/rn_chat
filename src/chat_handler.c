@@ -22,6 +22,7 @@
 #include <errno.h>
 
 #include "chat_handler.h"
+#include "helper.h"
 #include "list.h"
 
 //================================================
@@ -38,18 +39,6 @@ char user_name[INPUT_BUFFER_LEN];
 fd_set peer_fds;
 fd_set read_fds;
 int max_fd;
-
-//================================================
-// HELPER FUNCTIONS
-//================================================
-
-void chomp(char *s)
-{
-    while (*s && *s != '\n' && *s != '\r')
-        s++;
-
-    *s = 0;
-}
 
 //================================================
 // CHAT HANDLER FUNCTIONS
@@ -125,9 +114,7 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
             pthread_mutex_unlock(&peer_mutex);
         }
 
-        pthread_mutex_lock(&peer_mutex);
-        list_add(&peer_list, new_peer);
-        pthread_mutex_unlock(&peer_mutex);
+        list_add_safe(&peer_mutex, &peer_list, new_peer);
     }
 
     char *buffer = NULL;
@@ -136,9 +123,7 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
 
     packet newUser;
     newUser.data = buffer;
-    pthread_mutex_lock(&peer_mutex);
-    newUser.length = list_size(peer_list);
-    pthread_mutex_unlock(&peer_mutex);
+    newUser.length = list_size_safe(&peer_mutex, peer_list);
     newUser.type = MSG_NEW_USERS;
     newUser.version = PROTOCOL_VERSION;
 
@@ -248,9 +233,7 @@ void create_enter_req_data(char **packet_data, int *packet_len)
     // DEBUGGING
     // printf("%d \t %d\n", list_size(peer_list), list_size(peer_list) * sizeof(list_node) * 2);
 
-    pthread_mutex_lock(&peer_mutex);
-    char *data = malloc(list_size(peer_list) * sizeof(list_node) * 1024); // * 256 to compensate for string names
-    pthread_mutex_unlock(&peer_mutex);
+    char *data = malloc(list_size_safe(&peer_mutex, peer_list) * sizeof(list_node) * 1024); // * 1024 to compensate for string names
 
     if (data == NULL)
     {
@@ -355,7 +338,7 @@ void parse_connect(int socket)
     printf("peer_name: %ld\t%s\n", (long int)new_peer->name, new_peer->name);
 
     pthread_mutex_lock(&peer_mutex);
-    list_add(&peer_list, new_peer);
+    list_add_safe(&peer_mutex, &peer_list, new_peer);
     pthread_mutex_unlock(&peer_mutex);
     free(entry_header_buf);
 
@@ -530,9 +513,7 @@ int connect_to_peer(uint32_t destination_ip, uint16_t destination_port, BOOL use
     packet enter_req;
 
     enter_req.data = data;
-    pthread_mutex_lock(&peer_mutex);
-    enter_req.length = list_size(peer_list);
-    pthread_mutex_unlock(&peer_mutex);
+    enter_req.length = list_size_safe(&peer_mutex, peer_list);
     enter_req.type = MSG_ENTER_REQ;
     enter_req.version = PROTOCOL_VERSION;
 
@@ -587,7 +568,7 @@ void recv_packet(int socket, BOOL use_sctp)
         {
             if (i->data->socket == socket)
             {
-                list_remove(&peer_list, i->data->ip_addr);
+                list_remove_safe(&peer_mutex, &peer_list, i->data->ip_addr);
             }
         }
         pthread_mutex_unlock(&peer_mutex);
@@ -625,7 +606,7 @@ void recv_packet(int socket, BOOL use_sctp)
                 if (peer->data->socket == socket)
                 {
                     uint32_t peer_ip = peer->data->ip_addr;
-                    list_remove(&peer_list, peer_ip);
+                    list_remove_safe(&peer_mutex, &peer_list, peer_ip);
                 }
             }
             pthread_mutex_unlock(&peer_mutex);
@@ -652,7 +633,7 @@ void recv_packet(int socket, BOOL use_sctp)
                 if (peer->data->socket == socket)
                 {
                     uint32_t peer_ip = peer->data->ip_addr;
-                    list_remove(&peer_list, peer_ip);
+                    list_remove_safe(&peer_mutex, &peer_list, peer_ip);
                 }
             }
             pthread_mutex_unlock(&peer_mutex);
@@ -906,7 +887,7 @@ void *heartbeat_thread_func()
                 FD_CLR(peer->data->socket, &peer_fds);
                 peer->data->socket = -1;
                 
-                list_remove(&peer_list, peer->data->ip_addr);
+                list_remove_safe(&peer_mutex, &peer_list, peer->data->ip_addr);
                 
                 free(ip_buffer);
                 ip_buffer = 0;
@@ -952,7 +933,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     user->isNew = 0;
 
     // Add self to list
-    list_add(&peer_list, user);
+    list_add_safe(&peer_mutex, &peer_list, user);
 
     printf("Initializing peer list mutex...\n");
     pthread_mutex_init(&peer_mutex, NULL);
@@ -1014,7 +995,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
                 struct in_addr addr = {.s_addr = p->data->ip_addr};
                 char ip_buf[INET_ADDRSTRLEN];
                 char port_buf[PORT_LEN + 1];
-                sprintf(port_buf, "%d", p->data->port);
+                sprintf(port_buf, "%hu", p->data->port);
 
                 printf("%s:\n", p->data->name);
                 printf("  address: %s:%s\n\n", inet_ntop(AF_INET, &addr, ip_buf, INET_ADDRSTRLEN), port_buf);
@@ -1024,7 +1005,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
         else if (strcmp(splitstr, "/quit") == 0 || strcmp(splitstr, "/quit\n") == 0)
         {
             send_disconnect();
-            list_free(peer_list);
+            list_free_safe(&peer_mutex, peer_list);
             return;
         }
         else if (strcmp(splitstr, "/msg") == 0)
