@@ -118,15 +118,13 @@ void send_disconnect(chat_application_context *ctx)
     pthread_mutex_unlock(ctx->peer_mutex);
 }
 
-void send_message(chat_application_context *ctx, char *message, BOOL private, char *user_name)
+void send_message(chat_application_context *ctx, char *message,
+                  BOOL private, char *user_name)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
     int msg_length = strlen(message) + 1;
     int aligned_length = msg_length;
-
-    // Remove newline from message
-    chomp(message);
 
     // Don't send empty messages!
     if (strcmp(message, "\n") == 0)
@@ -172,7 +170,8 @@ void send_message(chat_application_context *ctx, char *message, BOOL private, ch
 }
 
 // Connects to a client / client-network
-int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip, uint16_t destination_port, BOOL use_sctp)
+int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip,
+                    uint16_t destination_port, BOOL use_sctp)
 {
     // socket-file destriptor
     struct sockaddr_in address;
@@ -233,7 +232,7 @@ void show_peer_list(chat_application_context *ctx)
     {
         struct in_addr addr = {.s_addr = p->data->ip_addr};
         char ip_buf[INET_ADDRSTRLEN];
-        char port_buf[PORT_LEN + 1];
+        char port_buf[PORTSTRLEN + 1];
         sprintf(port_buf, "%hu", p->data->port);
 
         printf("%s:\n", p->data->name);
@@ -398,7 +397,12 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
                 splitstr = strtok(NULL, " ");
             }
 
-            printf("%s: %s\r", ctx.user_name, message);
+            // Remove newline from message
+            chomp(message);
+
+            if (strcmp(message, "") != 0)
+                printf("%s: %s\n", ctx.user_name, message);
+
             send_message(&ctx, message, 0, NULL);
         }
     }

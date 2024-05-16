@@ -79,9 +79,9 @@ void receive_new_peer(chat_application_context *ctx, int sock, char type, int le
         if (i == 0 && type == 'E')
         {
             // Search through list to see if entry already exists
-            for (list_node *i = ctx->peer_list; i != NULL; i = i->next)
+            for (list_node *node = ctx->peer_list; node != NULL; node = node->next)
             {
-                if (strcmp(i->data->name, new_peer->name) == 0)
+                if (strcmp(node->data->name, new_peer->name) == 0)
                 {
                     printf("INFO: Name taken!\n");
                     send_failed(sock);
@@ -106,17 +106,63 @@ void propagate_new_peer(chat_application_context *ctx, int sock)
         req.data);
 
     // send recently added users to older users in list and set newUsers = oldusers
-    for (list_node *i = ctx->peer_list->next; i != NULL; i = i->next)
+    for (list_node *node = ctx->peer_list->next; node != NULL; node = node->next)
     {
-        if (!(i->data->is_new) && i->data->socket != sock)
+        if (!(node->data->is_new) && node->data->socket != sock)
         {
-            send_data_packet(i->data->socket, &new_user, new_user.data, req.length);
-            i->data->is_new = 0;
+            send_data_packet(node->data->socket, &new_user, new_user.data, req.length);
+            node->data->is_new = 0;
         }
     }
 
     // Free data from enter request
     free(req.data);
+}
+
+void connect_to_new_peer(chat_application_context *ctx, peer *peer, packet *connect_packet,
+                         char *peer_connect_buffer, int buffer_length)
+{
+    // If not connected to peer yet, open connection
+    if (peer->socket < 0)
+    {
+        // socket-file destriptor
+        struct sockaddr_in address;
+        int sockfd = socket(AF_INET, SOCK_STREAM, ctx->use_sctp ? IPPROTO_SCTP : IPPROTO_TCP);
+        if (sockfd < 0)
+        {
+            fprintf(stderr, "ERROR: Failed to create socket.\n");
+            return;
+        }
+
+        bzero((char *)&address, sizeof(address));
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = peer->ip_addr;
+        address.sin_port = htons(peer->port); // Convert to network byteorder
+
+        if (connect(sockfd, (struct sockaddr *)&address, sizeof(address)) < 0)
+        {
+            fprintf(stderr, "ERROR: connect failed for new peer.\n");
+            close(sockfd);
+            FD_CLR(sockfd, &ctx->peer_fds);
+            sockfd = -1;
+            peer->socket = -1;
+            return;
+        }
+
+        // Set socket to client
+        peer->socket = sockfd;
+        // Add socket to master set
+        FD_SET(sockfd, &ctx->peer_fds);
+
+        // Update max socket
+        if (sockfd > ctx->max_fd)
+        {
+            ctx->max_fd = sockfd;
+        }
+    }
+
+    send_data_packet(peer->socket, connect_packet, peer_connect_buffer, buffer_length);
+    peer->is_new = 0;
 }
 
 void connect_to_new_peers(chat_application_context *ctx)
@@ -151,51 +197,11 @@ void connect_to_new_peers(chat_application_context *ctx)
 
     // Send connect to all new peers
     // Send data
-    for (list_node *i = ctx->peer_list->next; i != NULL; i = i->next)
+    for (list_node *node = ctx->peer_list->next; node != NULL; node = node->next)
     {
-        if (i->data->is_new)
+        if (node->data->is_new)
         {
-            // If not connected to peer yet, open connection
-            if (i->data->socket < 0)
-            {
-                // socket-file destriptor
-                struct sockaddr_in address;
-                int sockfd = socket(AF_INET, SOCK_STREAM, ctx->use_sctp ? IPPROTO_SCTP : IPPROTO_TCP);
-                if (sockfd < 0)
-                {
-                    fprintf(stderr, "ERROR: Failed to create socket.\n");
-                    return;
-                }
-
-                bzero((char *)&address, sizeof(address));
-                address.sin_family = AF_INET;
-                address.sin_addr.s_addr = i->data->ip_addr;
-                address.sin_port = htons(i->data->port); // Convert to network byteorder
-
-                if (connect(sockfd, (struct sockaddr *)&address, sizeof(address)) < 0)
-                {
-                    fprintf(stderr, "ERROR: connect failed for new peer.\n");
-                    close(sockfd);
-                    FD_CLR(sockfd, &ctx->peer_fds);
-                    sockfd = -1;
-                    i->data->socket = -1;
-                    return;
-                }
-
-                // Set socket to client
-                i->data->socket = sockfd;
-                // Add socket to master set
-                FD_SET(sockfd, &ctx->peer_fds);
-
-                // Update max socket
-                if (sockfd > ctx->max_fd)
-                {
-                    ctx->max_fd = sockfd;
-                }
-            }
-
-            send_data_packet(i->data->socket, &connect_packet, peer_connect_buffer, offset);
-            i->data->is_new = 0;
+            connect_to_new_peer(ctx, node->data, &connect_packet, peer_connect_buffer, offset);
         }
     }
 }
@@ -269,6 +275,98 @@ void remove_peer_by_socket(chat_application_context *ctx, int socket)
     }
 }
 
+void parse_packet(chat_application_context *ctx, int sock, char *header_buf)
+{
+    // Data received from client
+    packet incoming_packet;
+    memcpy(&incoming_packet, header_buf, HEADER_LEN);
+
+    char data_buf[incoming_packet.length];
+
+    switch (incoming_packet.type)
+    {
+    case MSG_NEW_USERS:
+    case MSG_ENTER_REQ:
+        parse_enter_req(ctx, sock, incoming_packet.length, incoming_packet.type, ctx->use_sctp);
+        break;
+    case MSG_FAILED:
+        receive_from_socket(sock, data_buf, sizeof(int32_t));
+        printf("Failed received with code: %d\n", (int)*data_buf);
+
+        remove_peer_by_socket(ctx, sock);
+
+        close(sock);
+        sock = -1;
+        FD_CLR(sock, &ctx->peer_fds); // remove from master set
+        // free(data_buf);
+        break;
+    case MSG_CONNECT:
+        parse_connect(ctx, sock);
+        break;
+    case MSG_DISCONNECT:
+        receive_from_socket(sock, data_buf, incoming_packet.length);
+        printf("Disconnect received.\n");
+
+        remove_peer_by_socket(ctx, sock);
+
+        // TODO: max_fd entsprechend anpassen
+        close(sock);
+        sock = -1;
+        FD_CLR(sock, &ctx->peer_fds); // remove from master set
+        break;
+    case MSG_MESSAGE:
+        receive_from_socket(sock, data_buf, incoming_packet.length);
+
+        for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
+        {
+            if (peer->data->socket == sock)
+            {
+                // Remove newline
+                chomp(data_buf);
+                printf("%s: %s\n", peer->data->name, data_buf);
+                fflush(stdout);
+            }
+        }
+        break;
+    case MSG_PRIVATE:
+        receive_from_socket(sock, data_buf, incoming_packet.length);
+
+        for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
+        {
+            if (peer->data->socket == sock)
+            {
+                // Remove newline at the end of message text
+                chomp(data_buf);
+                printf("[%s]: %s\n", peer->data->name, data_buf);
+                fflush(stdout);
+            }
+        }
+        break;
+    case MSG_HEARTBEAT:
+        // If SCTP is enabled, we don't need the heartbeat
+        // since SCTP has its own heartbeat
+        if (ctx->use_sctp)
+            return;
+
+        // Reset heartbeat of peer
+        for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
+        {
+            if (peer->data->socket != sock)
+            {
+                continue;
+            }
+            else
+            {
+                // Peer found -> Reset timer
+                peer->data->heartbeat_timer = HEARTBEAT_TIME;
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
 {
     pthread_mutex_lock(ctx->peer_mutex);
@@ -292,11 +390,11 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
         }
 
         // Remove client from list if error in connection has occured
-        for (list_node *i = ctx->peer_list->next; i != NULL; i = i->next)
+        for (list_node *node = ctx->peer_list->next; node != NULL; node = node->next)
         {
-            if (i->data->socket == socket)
+            if (node->data->socket == socket)
             {
-                list_remove(&ctx->peer_list, i->data->ip_addr);
+                list_remove(&ctx->peer_list, node->data->ip_addr);
             }
         }
 
@@ -306,94 +404,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
     }
     else
     {
-        // Data received from client
-        packet incoming_packet;
-        memcpy(&incoming_packet, header_buf, HEADER_LEN);
-
-        char data_buf[incoming_packet.length];
-
-        switch (incoming_packet.type)
-        {
-        case MSG_NEW_USERS:
-        case MSG_ENTER_REQ:
-            parse_enter_req(ctx, socket, incoming_packet.length, incoming_packet.type, use_sctp);
-            break;
-        case MSG_FAILED:
-            receive_from_socket(socket, data_buf, sizeof(int32_t));
-            printf("Failed received with code: %d\n", (int)*data_buf);
-
-            remove_peer_by_socket(ctx, socket);
-
-            close(socket);
-            socket = -1;
-            FD_CLR(socket, &ctx->peer_fds); // remove from master set
-            // free(data_buf);
-            break;
-        case MSG_CONNECT:
-            parse_connect(ctx, socket);
-            break;
-        case MSG_DISCONNECT:
-            receive_from_socket(socket, data_buf, incoming_packet.length);
-            printf("Disconnect received.\n");
-
-            remove_peer_by_socket(ctx, socket);
-
-            // TODO: max_fd entsprechend anpassen
-            close(socket);
-            socket = -1;
-            FD_CLR(socket, &ctx->peer_fds); // remove from master set
-            break;
-        case MSG_MESSAGE:
-            receive_from_socket(socket, data_buf, incoming_packet.length);
-
-            for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-            {
-                if (peer->data->socket == socket)
-                {
-                    // Remove newline
-                    chomp(data_buf);
-                    printf("%s: %s\n", peer->data->name, data_buf);
-                    fflush(stdout);
-                }
-            }
-            break;
-        case MSG_PRIVATE:
-            receive_from_socket(socket, data_buf, incoming_packet.length);
-
-            for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-            {
-                if (peer->data->socket == socket)
-                {
-                    // Remove newline at the end of message text
-                    chomp(data_buf);
-                    printf("[%s]: %s\n", peer->data->name, data_buf);
-                    fflush(stdout);
-                }
-            }
-            break;
-        case MSG_HEARTBEAT:
-            // If SCTP is enabled, we don't need the heartbeat
-            // since SCTP has its own heartbeat
-            if (use_sctp)
-                return;
-
-            // Reset heartbeat of peer
-            for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-            {
-                if (peer->data->socket != socket)
-                {
-                    continue;
-                }
-                else
-                {
-                    // Peer found -> Reset timer
-                    peer->data->heartbeat_timer = HEARTBEAT_TIME;
-                }
-            }
-            break;
-        default:
-            break;
-        }
+        parse_packet(ctx, socket, header_buf);
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);

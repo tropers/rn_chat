@@ -10,6 +10,8 @@
 #define NAME_LEN_LEN 2                                           // 2 bytes name length
 #define ENTRY_HEADER_LEN (IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN) // 8 bytes total length of entry header
 
+#define PORTSTRLEN 6 // Five digits + \0 "65535\0"
+
 /* Protocol definitions */
 #define PROTOCOL_VERSION 2
 #define MSG_ENTER_REQ 'E'

@@ -48,26 +48,26 @@ void list_add(list_node **head, peer *data)
         return;
     }
 
-    for (list_node *i = *head; i != NULL; i = i->next)
+    for (list_node *node = *head; node != NULL; node = node->next)
     {
-        if (i->data->ip_addr == data->ip_addr)
+        if (node->data->ip_addr == data->ip_addr)
         {
 
             fprintf(stderr, "ERROR: Couldn't add to list, user already exists.\n");
             return;
         }
-        if (i->next == NULL)
+        if (node->next == NULL)
         {
-            i->next = malloc(sizeof(list_node)); // Try to allocate a new element
+            node->next = malloc(sizeof(list_node)); // Try to allocate a new element
 
-            if (i->next == NULL)
+            if (node->next == NULL)
             {
                 fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory.\n");
                 return;
             }
 
-            i->next->next = NULL;
-            i->next->data = data; // Add data
+            node->next->next = NULL;
+            node->next->data = data; // Add data
             return;
         }
     }
@@ -85,12 +85,12 @@ void list_remove(list_node **head, uint32_t ip_addr)
 {
     list_node *prev = *head;
 
-    for (list_node *i = *head; i != NULL; i = i->next)
+    for (list_node *node = *head; node != NULL; node = node->next)
     {
-        if (i->data->ip_addr == ip_addr)
+        if (node->data->ip_addr == ip_addr)
         {
             // If head is deleted
-            if (i == *head)
+            if (node == *head)
             {
                 list_node *next = (*head)->next;
                 free(*head);
@@ -98,14 +98,14 @@ void list_remove(list_node **head, uint32_t ip_addr)
                 break;
             }
 
-            prev->next = i->next;
-            free(i->data);
-            free(i);
-            i = NULL;
+            prev->next = node->next;
+            free(node->data);
+            free(node);
+            node = NULL;
             break;
         }
 
-        prev = i;
+        prev = node;
     }
 }
 
@@ -121,9 +121,8 @@ int list_size(list_node *head)
 
     int size = 0;
 
-    for (list_node *i = head; i != NULL; i = i->next)
+    for (list_node *node = head; node != NULL; node = node->next)
     {
-
         ++size;
     }
 
