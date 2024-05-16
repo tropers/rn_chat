@@ -66,11 +66,6 @@ void list_add(list_node **head, peer *data)
                 return;
             }
 
-            // DEBUGGING
-            printf("Data: %ld\n", (long int)data);
-            printf("Name_Ptr: %ld\n", (long int)data->name);
-            printf("Name: %s\n", data->name);
-
             i->next->next = NULL;
             i->next->data = data; // Add data
             return;

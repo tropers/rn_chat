@@ -40,6 +40,7 @@ void send_heartbeat(list_node *peer)
         0,
         NULL);
 
+    // TODO: Check this
     // allocate buffer for heartbeat packet
     char buffer[sizeof(packet)];
     // char *buffer = malloc(sizeof(packet));

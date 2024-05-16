@@ -114,7 +114,7 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
     int packet_len = 0;
     create_enter_req_data(ctx, &buffer, &packet_len);
 
-    packet newUser = create_packet(
+    packet new_user = create_packet(
         PROTOCOL_VERSION,
         MSG_NEW_USERS,
         list_size(ctx->peer_list),
@@ -125,8 +125,8 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
     {
         if (!(i->data->isNew) && i->data->socket != sock)
         {
-            send(i->data->socket, &newUser, HEADER_LEN, 0);
-            send(i->data->socket, newUser.data, packet_len, 0);
+            send(i->data->socket, &new_user, HEADER_LEN, 0);
+            send(i->data->socket, new_user.data, packet_len, 0);
             i->data->isNew = 0;
         }
     }
@@ -216,6 +216,8 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
     free(entry_header_buf);
     free(buffer);
     free(peer_connect_buffer);
+
+    printf("Leaving parse_enter_req!\n");
 }
 
 // Returns the data created for the enter request package
@@ -223,10 +225,7 @@ void create_enter_req_data(chat_application_context *ctx, char **packet_data, in
 {
     int offset = 0;
 
-    // DEBUGGING
-    // printf("%d \t %d\n", list_size(peer_list), list_size(peer_list) * sizeof(list_node) * 2);
-
-    char *data = malloc(list_size_safe(ctx->peer_mutex, ctx->peer_list) * sizeof(list_node) * 1024); // * 1024 to compensate for string names
+    char *data = malloc(list_size(ctx->peer_list) * sizeof(list_node) * 1024); // * 1024 to compensate for string names
 
     if (data == NULL)
     {
@@ -234,7 +233,6 @@ void create_enter_req_data(chat_application_context *ctx, char **packet_data, in
     }
 
     // Iterate over peers
-    pthread_mutex_lock(ctx->peer_mutex);
     for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
     {
         // Copy IP-Address to packet-data
@@ -256,7 +254,6 @@ void create_enter_req_data(chat_application_context *ctx, char **packet_data, in
         memcpy(data + offset, peer->data->name, (int)name_len);
         offset += (int)name_len;
     }
-    pthread_mutex_unlock(ctx->peer_mutex);
 
     // HEX VIEW OF PACKET FOR DEBUGGING
     // for (int i = 0; i < offset; ++i) {
@@ -291,9 +288,6 @@ void parse_connect(chat_application_context *ctx, int socket)
     int name_length = *((uint16_t *)(entry_header_buf + offset));
     offset += NAME_LEN_LEN;
 
-    // DEBUGGING
-    printf("name_len: %d\n", name_length);
-
     // Receive name
     new_peer->name = malloc(name_length + 1);
     bzero(new_peer->name, name_length + 1);
@@ -305,37 +299,13 @@ void parse_connect(chat_application_context *ctx, int socket)
 
     strcpy(new_peer->name, name_buf);
 
-    // DEBUGGING
-    char *i = new_peer->name;
-    while (*i != 0)
-    {
-
-        printf("%c", *i);
-        ++i;
-    }
-    printf("\n");
-
     new_peer->socket = socket;
     new_peer->connected = 1;
     new_peer->isNew = 0;
     new_peer->heartbeatTimer = HEARTBEAT_TIME;
 
-    // DEBUGGING
-    printf("peer_name: %ld\t%s\n", (long int)new_peer->name, new_peer->name);
-
     list_add(&ctx->peer_list, new_peer);
     free(entry_header_buf);
-
-    // DEBUGGING
-    printf("Printing list: \n");
-    struct in_addr addr;
-    for (list_node *i = ctx->peer_list; i != NULL; i = i->next)
-    {
-
-        char ip_buf[INET_ADDRSTRLEN];
-        addr.s_addr = i->data->ip_addr;
-        printf("name:\t%s\nip:\t%s\n", i->data->name, inet_ntop(AF_INET, &addr, ip_buf, INET_ADDRSTRLEN));
-    }
 
     printf("Connect received.\n");
 }
@@ -567,7 +537,8 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
         socket = -1;
     }
     else
-    { // Data received from client
+    { 
+        // Data received from client
         packet incoming_packet;
         memcpy(&incoming_packet, header_buf, HEADER_LEN);
 
