@@ -13,8 +13,8 @@ typedef struct
     BOOL connected;
     int socket;
     uint16_t port;
-    double heartbeatTimer;
-    BOOL isNew;
+    double heartbeat_timer;
+    BOOL is_new;
 
     char *name;
 } peer;

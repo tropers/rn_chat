@@ -14,6 +14,9 @@
 
 typedef struct
 {
+    BOOL use_sctp;
+    int sctp_hbinterval;
+
     pthread_mutex_t *peer_mutex;
     list_node *peer_list;
 
@@ -23,6 +26,12 @@ typedef struct
     fd_set read_fds;
     int max_fd;
 } chat_application_context;
+
+typedef struct
+{
+    char *data;
+    int length;
+} enter_request;
 
 // Packet datatype
 typedef struct
@@ -38,7 +47,6 @@ typedef struct
 typedef struct
 {
     chat_application_context *ctx;
-    BOOL use_sctp;
     int sctp_hbinterval;
 } receiver_thread_args;
 

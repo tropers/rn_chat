@@ -28,7 +28,7 @@
 #include "heartbeat.h"
 
 void send_failed(int socket);
-void create_enter_req_data(chat_application_context *ctx, char **packet_data, int *packet_len);
+enter_request create_enter_req_data(chat_application_context *ctx);
 
 packet create_packet(char version, char type, short length, char *data)
 {
@@ -37,6 +37,17 @@ packet create_packet(char version, char type, short length, char *data)
         .type = type,
         .length = length,
         .data = data};
+}
+
+void send_packet(int sock, packet *pack)
+{
+    send(sock, pack, HEADER_LEN, 0);
+}
+
+void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length)
+{
+    send(sock, pack, HEADER_LEN, 0);
+    send(sock, data_buffer, data_buf_length, 0);
 }
 
 void receive_from_socket(int sock, char *buffer, int length)
@@ -48,7 +59,7 @@ void receive_from_socket(int sock, char *buffer, int length)
     }
 }
 
-void parse_enter_req(chat_application_context *ctx, int sock, int length, char type, BOOL use_sctp)
+void add_new_peer(chat_application_context *ctx, int sock, char type, int length)
 {
     int offset = 0;
     char *entry_header_buf;
@@ -87,8 +98,8 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
         {
             new_peer->socket = -1; // No socket from other participants known
         }
-        new_peer->isNew = 1;
-        new_peer->heartbeatTimer = HEARTBEAT_TIME;
+        new_peer->is_new = 1;
+        new_peer->heartbeat_timer = HEARTBEAT_TIME;
 
         // Check if name of connecting client is already taken
         if (i == 0 && type == 'E')
@@ -110,28 +121,32 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
         list_add(&ctx->peer_list, new_peer);
     }
 
-    char *buffer = NULL;
-    int packet_len = 0;
-    create_enter_req_data(ctx, &buffer, &packet_len);
+    free(entry_header_buf);
+}
+
+void propagate_new_peer(chat_application_context *ctx, int sock)
+{
+    enter_request req = create_enter_req_data(ctx);
 
     packet new_user = create_packet(
         PROTOCOL_VERSION,
         MSG_NEW_USERS,
         list_size(ctx->peer_list),
-        buffer);
+        req.data);
 
     // send recently added users to older users in list and set newUsers = oldusers
     for (list_node *i = ctx->peer_list->next; i != NULL; i = i->next)
     {
-        if (!(i->data->isNew) && i->data->socket != sock)
+        if (!(i->data->is_new) && i->data->socket != sock)
         {
-            send(i->data->socket, &new_user, HEADER_LEN, 0);
-            send(i->data->socket, new_user.data, packet_len, 0);
-            i->data->isNew = 0;
+            send_data_packet(i->data->socket, &new_user, new_user.data, req.length);
+            i->data->is_new = 0;
         }
     }
+}
 
-    // Send connect to new peer
+void connect_to_new_peers(chat_application_context *ctx)
+{
     packet connect_packet = create_packet(
         PROTOCOL_VERSION,
         MSG_CONNECT,
@@ -140,7 +155,7 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
 
     char *peer_connect_buffer = malloc(INPUT_BUFFER_LEN * 4);
 
-    offset = 0;
+    int offset = 0;
 
     // Copy IP-Address to packet-data
     memcpy(peer_connect_buffer + offset, (char *)&ctx->peer_list->data->ip_addr, IP_ADDR_LEN);
@@ -164,14 +179,14 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
     // Send data
     for (list_node *i = ctx->peer_list->next; i != NULL; i = i->next)
     {
-        if (i->data->isNew)
+        if (i->data->is_new)
         {
             // If not connected to peer yet, open connection
             if (i->data->socket < 0)
             {
                 // socket-file destriptor
                 struct sockaddr_in address;
-                int sockfd = socket(AF_INET, SOCK_STREAM, use_sctp ? IPPROTO_SCTP : IPPROTO_TCP);
+                int sockfd = socket(AF_INET, SOCK_STREAM, ctx->use_sctp ? IPPROTO_SCTP : IPPROTO_TCP);
                 if (sockfd < 0)
                 {
                     fprintf(stderr, "ERROR: Failed to create socket.\n");
@@ -205,32 +220,34 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
                 }
             }
 
-            send(i->data->socket, (char *)&connect_packet, HEADER_LEN, 0);
-            send(i->data->socket, peer_connect_buffer, offset, 0);
-
-            i->data->isNew = 0;
+            send_data_packet(i->data->socket, &connect_packet, peer_connect_buffer, offset);
+            i->data->is_new = 0;
         }
     }
 
     // Delete packet buffers
-    free(entry_header_buf);
-    free(buffer);
     free(peer_connect_buffer);
+}
 
-    printf("Leaving parse_enter_req!\n");
+void parse_enter_req(chat_application_context *ctx, int sock, int length, char type, BOOL use_sctp)
+{
+    add_new_peer(ctx, sock, type, length);
+    propagate_new_peer(ctx, sock);
+    connect_to_new_peers(ctx);
 }
 
 // Returns the data created for the enter request package
-void create_enter_req_data(chat_application_context *ctx, char **packet_data, int *packet_len)
+enter_request create_enter_req_data(chat_application_context *ctx)
 {
-    int offset = 0;
-
+    // TODO: Check if this is necessary
     char *data = malloc(list_size(ctx->peer_list) * sizeof(list_node) * 1024); // * 1024 to compensate for string names
 
     if (data == NULL)
     {
-        fprintf(stderr, "ERROR: Counldn't allocate packet data.\n");
+        fprintf(stderr, "ERROR: Couldn't allocate packet data.\n");
     }
+
+    int offset = 0;
 
     // Iterate over peers
     for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
@@ -265,10 +282,9 @@ void create_enter_req_data(chat_application_context *ctx, char **packet_data, in
     //     fflush(stdout);
     // }
 
-    // Return pointer to buffer
-    *packet_data = data;
-    // Return length of data
-    *packet_len = offset;
+    return (enter_request){
+        .data = data,
+        .length = offset};
 }
 
 void parse_connect(chat_application_context *ctx, int socket)
@@ -301,8 +317,8 @@ void parse_connect(chat_application_context *ctx, int socket)
 
     new_peer->socket = socket;
     new_peer->connected = 1;
-    new_peer->isNew = 0;
-    new_peer->heartbeatTimer = HEARTBEAT_TIME;
+    new_peer->is_new = 0;
+    new_peer->heartbeat_timer = HEARTBEAT_TIME;
 
     list_add(&ctx->peer_list, new_peer);
     free(entry_header_buf);
@@ -321,16 +337,12 @@ void send_disconnect(chat_application_context *ctx)
         0,
         NULL);
 
-    // Create buffer for packet
-    char *buffer = malloc(sizeof(packet));
-    memcpy(buffer, &reset, HEADER_LEN);
-
     for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
     {
         // Send disconnect to everyone
         if (peer->data->connected)
         {
-            send(peer->data->socket, buffer, HEADER_LEN, 0);
+            send_packet(peer->data->socket, &reset);
         }
 
         // Close connection
@@ -371,16 +383,6 @@ void send_message(chat_application_context *ctx, char *message, BOOL private, ch
         aligned_length, // Length in 4 byte blocks
         NULL);
 
-    // Create buffer for packet
-    char *buffer = malloc(sizeof(packet) + aligned_length);
-    memcpy(buffer, &message_packet, HEADER_LEN);
-
-    // Fill message blocks with zeros
-    bzero(buffer + HEADER_LEN, aligned_length);
-
-    // Copy actual message
-    memcpy(buffer + HEADER_LEN, message, msg_length);
-
     for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
     { // uns selbst als head überspringen und message nur an andere schicken
         // Send message to everyone
@@ -389,29 +391,18 @@ void send_message(chat_application_context *ctx, char *message, BOOL private, ch
             if (private)
             {
                 message_packet.type = MSG_PRIVATE;
-                memcpy(buffer, &message_packet, HEADER_LEN);
 
                 if (strcmp(peer->data->name, user_name) == 0)
                 {
-                    // Send header
-                    send(peer->data->socket, buffer, HEADER_LEN, 0);
-
-                    // Send message blocks
-                    send(peer->data->socket, buffer + HEADER_LEN, aligned_length, 0);
+                    send_data_packet(peer->data->socket, &message_packet, message, msg_length);
                 }
             }
             else
-            { // Send header
-                send(peer->data->socket, buffer, HEADER_LEN, 0);
-
-                // Send message blocks
-                send(peer->data->socket, buffer + HEADER_LEN, aligned_length, 0);
+            { 
+                send_data_packet(peer->data->socket, &message_packet, message, msg_length);
             }
         }
     }
-
-    // Free the message buffer
-    free(buffer);
 
     pthread_mutex_unlock(ctx->peer_mutex);
 }
@@ -425,14 +416,7 @@ void send_failed(int socket)
         1, // 1 single byte for the error code
         NULL);
 
-    // Create buffer for packet
-    char *buffer = malloc(sizeof(packet));
-    memcpy(buffer, &failed, HEADER_LEN);
-
-    // send failed package to specified socket
-    send(socket, buffer, HEADER_LEN, 0);
-    // free allocated memory
-    free(buffer);
+    send_packet(socket, &failed);
 }
 
 // Connects to a client / client-network
@@ -462,9 +446,7 @@ int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip, uint
     }
 
     // Create enter request packet
-    char *data = NULL;
-    int packet_len = 0;
-    create_enter_req_data(ctx, &data, &packet_len);
+    enter_request req = create_enter_req_data(ctx);
 
     // Add socket ot master set
     FD_SET(sockfd, &ctx->peer_fds);
@@ -473,13 +455,9 @@ int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip, uint
         PROTOCOL_VERSION,
         MSG_ENTER_REQ,
         list_size_safe(ctx->peer_mutex, ctx->peer_list),
-        data);
+        req.data);
 
-    send(sockfd, &enter_req, HEADER_LEN, 0);
-    send(sockfd, enter_req.data, packet_len, 0);
-
-    // Delete packet buffer
-    free(data);
+    send_data_packet(sockfd, &enter_req, enter_req.data, req.length);
 
     // Set maximum socket to new socket if new socket is bigger
     if (sockfd > ctx->max_fd)
@@ -499,6 +477,18 @@ void *get_in_addr(struct sockaddr *sa)
     }
 
     return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
+
+void remove_peer_by_socket(chat_application_context *ctx, int socket)
+{
+    for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
+    {
+        if (peer->data->socket == socket)
+        {
+            uint32_t peer_ip = peer->data->ip_addr;
+            list_remove(&ctx->peer_list, peer_ip);
+        }
+    }
 }
 
 void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
@@ -537,7 +527,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
         socket = -1;
     }
     else
-    { 
+    {
         // Data received from client
         packet incoming_packet;
         memcpy(&incoming_packet, header_buf, HEADER_LEN);
@@ -554,15 +544,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
             receive_from_socket(socket, data_buf, sizeof(int32_t));
             printf("Failed received with code: %d\n", (int)*data_buf);
 
-            // remove from list
-            for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-            {
-                if (peer->data->socket == socket)
-                {
-                    uint32_t peer_ip = peer->data->ip_addr;
-                    list_remove(&ctx->peer_list, peer_ip);
-                }
-            }
+            remove_peer_by_socket(ctx, socket);
 
             close(socket);
             socket = -1;
@@ -576,16 +558,9 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
             receive_from_socket(socket, data_buf, incoming_packet.length);
             printf("Disconnect received.\n");
 
-            for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-            {
-                if (peer->data->socket == socket)
-                {
-                    uint32_t peer_ip = peer->data->ip_addr;
-                    list_remove(&ctx->peer_list, peer_ip);
-                }
-            }
+            remove_peer_by_socket(ctx, socket);
 
-            // max_fd entsprechend anpassen ;
+            // TODO: max_fd entsprechend anpassen
             close(socket);
             socket = -1;
             FD_CLR(socket, &ctx->peer_fds); // remove from master set
@@ -632,9 +607,9 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
                     continue;
                 }
                 else
-                { // peer gefunden timer reset
-                    peer->data->heartbeatTimer = HEARTBEAT_TIME;
-                    printf("Heartbeat updated for %d\n", socket);
+                {
+                    // Peer found -> Reset timer
+                    peer->data->heartbeat_timer = HEARTBEAT_TIME;
                 }
             }
             break;
@@ -738,7 +713,7 @@ void *receiver_thread_func(void *args)
     FD_ZERO(&ctx->peer_fds);
     FD_ZERO(&ctx->read_fds);
 
-    int listener_fd = setup_listener(ctx, thread_args.use_sctp, thread_args.sctp_hbinterval);
+    int listener_fd = setup_listener(ctx, ctx->use_sctp, thread_args.sctp_hbinterval);
 
     struct timeval timeout = {0, 50000};
 
@@ -769,9 +744,9 @@ void *receiver_thread_func(void *args)
                     handle_new_connection(ctx, listener_fd);
                 }
                 else
-                { 
+                {
                     // Receive and handle message
-                    recv_packet(ctx, i, thread_args.use_sctp);
+                    recv_packet(ctx, i, ctx->use_sctp);
                 }
             }
         }
@@ -803,7 +778,10 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
 {
     char buffer[INPUT_BUFFER_LEN];
 
-    chat_application_context ctx;
+    chat_application_context ctx = {
+        .use_sctp = use_sctp,
+        .sctp_hbinterval = sctp_hbinterval
+    };
 
     pthread_mutex_t peer_mutex;
     ctx.peer_mutex = &peer_mutex;
@@ -811,10 +789,10 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     pthread_t heartbeat_thread;
     pthread_t receiver_thread;
 
-    printf("################################################\n");
-    printf("#       SUPER AWESOME CHAT CLIENT SOFTWARE     #\n");
-    printf("#                       %s                   #\n", CHAT_VERSION);
-    printf("################################################\n");
+    printf("#################################################\n");
+    printf("#       SUPER AWESOME CHAT CLIENT SOFTWARE      #\n");
+    printf("#                       %s                    #\n", CHAT_VERSION);
+    printf("#################################################\n");
 
     // Initialize list and mutex
     printf("Initializing peer list...\n");
@@ -839,7 +817,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     user->name = ctx.user_name;
     user->port = PORT;
     user->connected = 1;
-    user->isNew = 0;
+    user->is_new = 0;
 
     // Add self to list
     list_add(&ctx.peer_list, user);
@@ -849,7 +827,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
 
     printf("Starting receiver thread...\n");
 
-    receiver_thread_args args = {&ctx, use_sctp, sctp_hbinterval};
+    receiver_thread_args args = {&ctx};
     pthread_create(&receiver_thread, NULL, receiver_thread_func, &args);
 
     // Start heartbeat thread if not using SCTP protocol

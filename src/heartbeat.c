@@ -40,15 +40,9 @@ void send_heartbeat(list_node *peer)
         0,
         NULL);
 
-    // TODO: Check this
-    // allocate buffer for heartbeat packet
-    char buffer[sizeof(packet)];
-    // char *buffer = malloc(sizeof(packet));
-    memcpy(&buffer, &heartbeat, HEADER_LEN);
-
     if (peer->data->connected)
     {
-        send(peer->data->socket, &buffer, HEADER_LEN, 0);
+        send(peer->data->socket, &heartbeat, HEADER_LEN, 0);
     }
 }
 
@@ -89,9 +83,9 @@ void *heartbeat_thread_func(void *args)
         // Calculate new Timer for peers
         for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
         {
-            peer->data->heartbeatTimer -= current_diff;
+            peer->data->heartbeat_timer -= current_diff;
 
-            if (peer->data->heartbeatTimer <= 0)
+            if (peer->data->heartbeat_timer <= 0)
             {
                 // Time's up, remove current peer
                 remove_peer(ctx, peer);
