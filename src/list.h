@@ -7,7 +7,8 @@
 #include "constants.h"
 
 // Peer datatype
-typedef struct {
+typedef struct
+{
     uint32_t ip_addr;
     BOOL connected;
     int socket;
@@ -19,7 +20,8 @@ typedef struct {
 } peer;
 
 // Peer list node datatype
-typedef struct list_node {
+typedef struct list_node
+{
     peer *data;
     struct list_node *next;
 } list_node;

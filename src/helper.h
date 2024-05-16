@@ -2,8 +2,10 @@
 // HELPER FUNCTIONS
 //================================================
 
-void chomp(char *s) {
-    while (*s && *s != '\n' && *s != '\r') {
+void chomp(char *s)
+{
+    while (*s && *s != '\n' && *s != '\r')
+    {
         s++;
     }
 

@@ -7,7 +7,8 @@
 #include "chat.h"
 #include "list.h"
 
-typedef struct {
+typedef struct
+{
     chat_application_context *ctx;
 } heartbeat_thread_args;
 
