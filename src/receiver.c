@@ -44,7 +44,6 @@ void receive_new_peer(chat_application_context *ctx, int sock, char type, int le
         peer *new_peer = malloc(sizeof(peer));
 
         // receive user_header
-        printf("Receiving Header...\n");
         receive_from_socket(sock, entry_header_buf, ENTRY_HEADER_LEN);
 
         new_peer->ip_addr = *((uint32_t *)(entry_header_buf + offset));
@@ -57,7 +56,6 @@ void receive_new_peer(chat_application_context *ctx, int sock, char type, int le
         offset += NAME_LEN_LEN;
 
         // Receive name
-        printf("Receiving Name with length %d...\n", name_length);
         new_peer->name = malloc(name_length + 1);
         bzero(new_peer->name, name_length + 1);
         receive_from_socket(sock, new_peer->name, name_length);
@@ -92,6 +90,7 @@ void receive_new_peer(chat_application_context *ctx, int sock, char type, int le
             }
         }
 
+        printf("INFO: %s joined the chat.\n", new_peer->name);
         list_add(&ctx->peer_list, new_peer);
     }
 }

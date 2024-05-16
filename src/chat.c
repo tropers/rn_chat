@@ -398,6 +398,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
                 splitstr = strtok(NULL, " ");
             }
 
+            printf("%s: %s\r", ctx.user_name, message);
             send_message(&ctx, message, 0, NULL);
         }
     }
