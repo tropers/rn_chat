@@ -7,6 +7,8 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -14,11 +16,6 @@
 #include <netinet/sctp.h>
 #include <string.h>
 #include <sys/select.h>
-#include <sys/types.h>
-#include <netdb.h>
-#include <time.h>
-#include <fcntl.h>
-#include <strings.h>
 #include <errno.h>
 
 #include "chat.h"
@@ -59,11 +56,10 @@ void receive_from_socket(int sock, char *buffer, int length)
     }
 }
 
-void add_new_peer(chat_application_context *ctx, int sock, char type, int length)
+void receive_new_peer(chat_application_context *ctx, int sock, char type, int length)
 {
     int offset = 0;
-    char *entry_header_buf;
-    entry_header_buf = malloc(ENTRY_HEADER_LEN);
+    char entry_header_buf[ENTRY_HEADER_LEN];
 
     for (int i = 0; i < length; i++)
     {
@@ -87,8 +83,9 @@ void add_new_peer(chat_application_context *ctx, int sock, char type, int length
         bzero(new_peer->name, name_length + 1);
         receive_from_socket(sock, new_peer->name, name_length);
 
-        // initialize new peer
+        // Initialize new peer
         new_peer->connected = 1;
+
         // We know the socket from the connecting peer
         if (i == 0 && type != MSG_NEW_USERS)
         {
@@ -107,8 +104,6 @@ void add_new_peer(chat_application_context *ctx, int sock, char type, int length
             // Search through list to see if entry already exists
             for (list_node *i = ctx->peer_list; i != NULL; i = i->next)
             {
-                printf("listname:\t\t%s\npeername:\t\t%s\n", i->data->name, new_peer->name);
-
                 if (strcmp(i->data->name, new_peer->name) == 0)
                 {
                     printf("INFO: Name taken!\n");
@@ -120,8 +115,6 @@ void add_new_peer(chat_application_context *ctx, int sock, char type, int length
 
         list_add(&ctx->peer_list, new_peer);
     }
-
-    free(entry_header_buf);
 }
 
 void propagate_new_peer(chat_application_context *ctx, int sock)
@@ -143,6 +136,9 @@ void propagate_new_peer(chat_application_context *ctx, int sock)
             i->data->is_new = 0;
         }
     }
+
+    // Free data from enter request
+    free(req.data);
 }
 
 void connect_to_new_peers(chat_application_context *ctx)
@@ -153,7 +149,7 @@ void connect_to_new_peers(chat_application_context *ctx)
         0,
         NULL);
 
-    char *peer_connect_buffer = malloc(INPUT_BUFFER_LEN * 4);
+    char peer_connect_buffer[INPUT_BUFFER_LEN];
 
     int offset = 0;
 
@@ -224,14 +220,11 @@ void connect_to_new_peers(chat_application_context *ctx)
             i->data->is_new = 0;
         }
     }
-
-    // Delete packet buffers
-    free(peer_connect_buffer);
 }
 
 void parse_enter_req(chat_application_context *ctx, int sock, int length, char type, BOOL use_sctp)
 {
-    add_new_peer(ctx, sock, type, length);
+    receive_new_peer(ctx, sock, type, length);
     propagate_new_peer(ctx, sock);
     connect_to_new_peers(ctx);
 }
@@ -239,57 +232,53 @@ void parse_enter_req(chat_application_context *ctx, int sock, int length, char t
 // Returns the data created for the enter request package
 enter_request create_enter_req_data(chat_application_context *ctx)
 {
-    // TODO: Check if this is necessary
-    char *data = malloc(list_size(ctx->peer_list) * sizeof(list_node) * 1024); // * 1024 to compensate for string names
+    char *data = malloc(1);
 
-    if (data == NULL)
-    {
-        fprintf(stderr, "ERROR: Couldn't allocate packet data.\n");
-    }
-
-    int offset = 0;
+    // int offset = 0;
+    int total_length = 0;
+    int previous_total_length = 0;
 
     // Iterate over peers
     for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
     {
+        const int entry_header_length = IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN;
+
+        char entry_header[entry_header_length];
+
         // Copy IP-Address to packet-data
-        memcpy(data + offset, (char *)&peer->data->ip_addr, IP_ADDR_LEN);
-        offset += IP_ADDR_LEN;
+        memcpy(entry_header, (char *)&peer->data->ip_addr, IP_ADDR_LEN);
 
         // Copy port
         // uint16_t port = PORT;
         uint16_t port = peer->data->port;
-        memcpy(data + offset, (char *)&port, PORT_LEN);
-        offset += PORT_LEN;
+        memcpy(entry_header + IP_ADDR_LEN, (char *)&port, PORT_LEN);
 
         // Copy length of name
-        uint16_t name_len = (uint16_t)strlen(peer->data->name) + 1;
-        memcpy(data + offset, (char *)&name_len, NAME_LEN_LEN);
-        offset += NAME_LEN_LEN;
+        uint16_t name_length = (uint16_t)strlen(peer->data->name) + 1;
+        memcpy(entry_header + IP_ADDR_LEN + NAME_LEN_LEN, (char *)&name_length, NAME_LEN_LEN);
 
+        char name[name_length];
         // Copy name
-        memcpy(data + offset, peer->data->name, (int)name_len);
-        offset += (int)name_len;
+        memcpy(name, peer->data->name, (int)name_length);
+
+        previous_total_length = total_length;
+        total_length += entry_header_length + name_length;
+
+        data = realloc(data, total_length);
+        memcpy(data + previous_total_length, entry_header, entry_header_length);
+        memcpy(data + previous_total_length, name, name_length);
     }
 
-    // HEX VIEW OF PACKET FOR DEBUGGING
-    // for (int i = 0; i < offset; ++i) {
-    //     if (i % 16 == 0) {
-    //         printf("\n");
-    //     }
-
-    //     printf("%02X ", data[i]);
-    //     fflush(stdout);
-    // }
-
-    return (enter_request){
+    return (enter_request) {
         .data = data,
-        .length = offset};
+        .length = total_length
+    };
 }
 
 void parse_connect(chat_application_context *ctx, int socket)
 {
-    char *entry_header_buf = malloc(ENTRY_HEADER_LEN);
+    char entry_header_buf[ENTRY_HEADER_LEN];
+
     peer *new_peer = malloc(sizeof(peer));
     int offset = 0;
 
@@ -321,7 +310,6 @@ void parse_connect(chat_application_context *ctx, int socket)
     new_peer->heartbeat_timer = HEARTBEAT_TIME;
 
     list_add(&ctx->peer_list, new_peer);
-    free(entry_header_buf);
 
     printf("Connect received.\n");
 }
@@ -398,7 +386,7 @@ void send_message(chat_application_context *ctx, char *message, BOOL private, ch
                 }
             }
             else
-            { 
+            {
                 send_data_packet(peer->data->socket, &message_packet, message, msg_length);
             }
         }
@@ -459,6 +447,9 @@ int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip, uint
 
     send_data_packet(sockfd, &enter_req, enter_req.data, req.length);
 
+    // Free data from enter request
+    free(req.data);
+
     // Set maximum socket to new socket if new socket is bigger
     if (sockfd > ctx->max_fd)
     {
@@ -497,7 +488,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
 
     int nbytes;
     char header_buf[HEADER_LEN];
-    char *data_buf;
+    // char *data_buf;
 
     // Handle data from client
     if ((nbytes = recv(socket, header_buf, HEADER_LEN, 0)) <= 0)
@@ -532,7 +523,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
         packet incoming_packet;
         memcpy(&incoming_packet, header_buf, HEADER_LEN);
 
-        data_buf = malloc(incoming_packet.length);
+        char data_buf[incoming_packet.length];
 
         switch (incoming_packet.type)
         {
@@ -549,7 +540,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
             close(socket);
             socket = -1;
             FD_CLR(socket, &ctx->peer_fds); // remove from master set
-            free(data_buf);
+            // free(data_buf);
             break;
         case MSG_CONNECT:
             parse_connect(ctx, socket);
@@ -586,7 +577,7 @@ void recv_packet(chat_application_context *ctx, int socket, BOOL use_sctp)
             {
                 if (peer->data->socket == socket)
                 {
-                    // Remove newline
+                    // Remove newline at the end of message text
                     chomp(data_buf);
                     printf("[%s]: %s\n", peer->data->name, data_buf);
                     fflush(stdout);
@@ -780,8 +771,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
 
     chat_application_context ctx = {
         .use_sctp = use_sctp,
-        .sctp_hbinterval = sctp_hbinterval
-    };
+        .sctp_hbinterval = sctp_hbinterval};
 
     pthread_mutex_t peer_mutex;
     ctx.peer_mutex = &peer_mutex;
@@ -892,11 +882,9 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
             }
 
             // Get username for private message
-            // char *user_name = malloc(INPUT_BUFFER_LEN);
             char user_name[INPUT_BUFFER_LEN] = {0};
             strcpy(ctx.user_name, splitstr);
 
-            // char *message = malloc(strlen(buffer));
             char message[strlen(buffer)];
             bzero(message, strlen(buffer));
 

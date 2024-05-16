@@ -99,6 +99,7 @@ void list_remove(list_node **head, uint32_t ip_addr)
             }
 
             prev->next = i->next;
+            free(i->data);
             free(i);
             i = NULL;
             break;
@@ -146,8 +147,8 @@ void list_free(list_node *head)
 
     while (current != NULL)
     {
-
         next = current->next;
+        free(current->data);
         free(current);
         current = next;
     }
