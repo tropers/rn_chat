@@ -48,12 +48,12 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
 {
     int offset = 0;
     char *entry_header_buf;
+    entry_header_buf = malloc(ENTRY_HEADER_LEN);
 
     for (int i = 0; i < length; i++)
     {
         offset = 0;
         peer *new_peer = malloc(sizeof(peer));
-        entry_header_buf = malloc(ENTRY_HEADER_LEN);
         //receive user_header
         if (recv(sock, entry_header_buf, ENTRY_HEADER_LEN, 0) <= 0)
         {
@@ -115,7 +115,6 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
         }
 
         list_add_safe(&peer_mutex, &peer_list, new_peer);
-        free(entry_header_buf);
     }
 
     char *buffer = NULL;
@@ -222,6 +221,7 @@ void parse_enter_req(int sock, int length, char type, BOOL use_sctp)
     }
 
     // Delete packet buffers
+    free(entry_header_buf);
     free(buffer);
     free(peer_connect_buffer);
 }
