@@ -24,7 +24,6 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 
-
 void handle_new_connection(chat_application_context *ctx, int listener_fd)
 {
     struct sockaddr_storage remoteaddr; // Client Address

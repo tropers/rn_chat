@@ -287,7 +287,7 @@ void handle_enter_req(chat_application_context *ctx, int sock, int length, char 
     connect_to_new_peers(ctx);
 }
 
-void handle_connect(chat_application_context *ctx, int sock)
+void handle_connect(list_node *peer_list, int sock)
 {
     char entry_header_buf[ENTRY_HEADER_LEN];
 
@@ -321,30 +321,31 @@ void handle_connect(chat_application_context *ctx, int sock)
     new_peer->is_new = 0;
     new_peer->heartbeat_timer = HEARTBEAT_TIME;
 
-    list_add(&ctx->peer_list, new_peer);
+    list_add(&peer_list, new_peer);
 
     printf("Connect received.\n");
 }
 
-void remove_peer_by_socket(chat_application_context *ctx, int sock)
+void remove_peer_by_socket(list_node *peer_list, int sock)
 {
-    for (list_node *node = ctx->peer_list; node != NULL; node = node->next)
+    for (list_node *node = peer_list; node != NULL; node = node->next)
     {
         if (node->data->sock == sock)
         {
             uint32_t peer_ip = node->data->ip_addr;
-            list_remove(&ctx->peer_list, peer_ip);
+            list_remove(&peer_list, peer_ip);
+            break;
         }
     }
 }
 
-void handle_message(chat_application_context *ctx, int sock, size_t packet_length, BOOL is_private)
+void handle_message(list_node *peer_list, int sock, size_t packet_length, BOOL is_private)
 {
     char data_buffer[packet_length];
 
     receive_from_socket(sock, data_buffer, packet_length);
 
-    for (list_node *node = ctx->peer_list; node != NULL; node = node->next)
+    for (list_node *node = peer_list; node != NULL; node = node->next)
     {
         if (node->data->sock == sock)
         {
@@ -353,44 +354,41 @@ void handle_message(chat_application_context *ctx, int sock, size_t packet_lengt
     }
 }
 
-void handle_disconnect(chat_application_context *ctx, int sock, size_t packet_length)
+void handle_disconnect(list_node *peer_list, int sock, fd_set *peer_fds)
 {
-    char data_buffer[packet_length];
-
-    receive_from_socket(sock, data_buffer, packet_length);
     printf("INFO: Disconnect received.\n");
 
-    remove_peer_by_socket(ctx, sock);
+    remove_peer_by_socket(peer_list, sock);
 
     // TODO: max_fd entsprechend anpassen
+    FD_CLR(sock, peer_fds); // remove from master set
     close(sock);
     sock = -1;
-    FD_CLR(sock, &ctx->peer_fds); // remove from master set
 }
 
-void handle_failed(chat_application_context *ctx, int sock)
+void handle_failed(list_node *peer_list, int sock, fd_set *peer_fds)
 {
     char data_buffer[sizeof(int32_t)];
 
     receive_from_socket(sock, data_buffer, sizeof(int32_t));
     printf("Failed received with code: %d\n", (int)*data_buffer);
 
-    remove_peer_by_socket(ctx, sock);
-
+    FD_CLR(sock, peer_fds); // remove from master set
     close(sock);
+    remove_peer_by_socket(peer_list, sock);
+
     sock = -1;
-    FD_CLR(sock, &ctx->peer_fds); // remove from master set
 }
 
-void handle_heartbeat(chat_application_context *ctx, int sock)
+void handle_heartbeat(list_node *peer_list, int sock, BOOL use_sctp)
 {
     // If SCTP is enabled, we don't need the heartbeat
     // since SCTP has its own heartbeat
-    if (ctx->use_sctp)
+    if (use_sctp)
         return;
 
     // Reset heartbeat of peer
-    for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
+    for (list_node *peer = peer_list; peer != NULL; peer = peer->next)
     {
         if (peer->data->sock != sock)
         {
@@ -417,22 +415,22 @@ void parse_packet(chat_application_context *ctx, int sock, char *header_buf)
         handle_enter_req(ctx, sock, incoming_packet.length, incoming_packet.type, ctx->use_sctp);
         break;
     case MSG_FAILED:
-        handle_failed(ctx, sock);
+        handle_failed(ctx->peer_list, sock, &ctx->peer_fds);
         break;
     case MSG_CONNECT:
-        handle_connect(ctx, sock);
+        handle_connect(ctx->peer_list, sock);
         break;
     case MSG_DISCONNECT:
-        handle_disconnect(ctx, sock, incoming_packet.length);
+        handle_disconnect(ctx->peer_list, sock, &ctx->peer_fds);
         break;
     case MSG_MESSAGE:
-        handle_message(ctx, sock, incoming_packet.length, FALSE);
+        handle_message(ctx->peer_list, sock, incoming_packet.length, FALSE);
         break;
     case MSG_PRIVATE:
-        handle_message(ctx, sock, incoming_packet.length, TRUE);
+        handle_message(ctx->peer_list, sock, incoming_packet.length, TRUE);
         break;
     case MSG_HEARTBEAT:
-        handle_heartbeat(ctx, sock);
+        handle_heartbeat(ctx->peer_list, sock, ctx->use_sctp);
         break;
     default:
         break;
@@ -466,6 +464,7 @@ void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp)
             if (node->data->sock == sock)
             {
                 list_remove(&ctx->peer_list, node->data->ip_addr);
+                break;
             }
         }
 
