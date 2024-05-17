@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "chat.h"
 #include "helper.h"
@@ -16,20 +15,34 @@
 static char *usage = "Usage: chat --sctp INTERVAL_TIME\n\n\
 INTERVAL_TIME: interval time for the sctp heartbeat.\n";
 
-BOOL isnumber(char *string)
+void args_sctp(int argc, char **argv)
 {
-    BOOL is_number = TRUE;
-
-    for (char *c = string; *c != '\0'; c++)
+    if (argc > 2)
     {
-        if (!isdigit(*c))
+        chomp(argv[2]);
+        if (isnumber(argv[2]))
         {
-            is_number = FALSE;
-            break;
+            printf("Using SCTP with interval: %s.\n", argv[2]);
+            handle(1, atoi(argv[2]));
+        }
+        else
+        {
+            printf("ERROR: Wrong format supplied for heartbeat SCTP heartbeat interval!\n");
+            exit(-1);
         }
     }
+    else
+    {
+        // If argument isn't passed correctly, print usage
+        printf(usage);
+        exit(0);
+    }
+}
 
-    return is_number;
+void args_usage(int return_code)
+{
+    printf(usage);
+    exit(return_code);
 }
 
 int main(int argc, char **argv)
@@ -38,38 +51,17 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[1], "--sctp") == 0)
         {
-            if (argc > 2)
-            {
-                chomp(argv[2]);
-                if (isnumber(argv[2]))
-                {
-                    printf("Using SCTP with interval: %s.\n", argv[2]);
-                    handle(1, atoi(argv[2]));
-                }
-                else
-                {
-                    printf("ERROR: Wrong format supplied for heartbeat SCTP heartbeat interval!\n");
-                    return -1;
-                }
-            }
-            else
-            {
-                // If argument isn't passed correctly, print usage
-                printf(usage);
-                return 0;
-            }
+            args_sctp(argc, argv);
         }
         else if (strcmp(argv[1], "--help") == 0 ||
                  strcmp(argv[1], "-h") == 0)
         {
-            printf(usage);
-            return 0;
+            args_usage(0);
         }
         else
         {
             printf("Invalid argument \"%s\"\n", argv[1]);
-            printf(usage);
-            return -1;
+            args_usage(-1);
         }
     }
     else
