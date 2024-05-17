@@ -399,10 +399,10 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
             // Remove newline from message
             chomp(message);
 
-            if (strcmp(message, "") != 0)
+            if (strcmp(message, "") != 0) {
                 printf("%s: %s\n", ctx.user_name, message);
-
-            send_message(&ctx, message, 0, NULL);
+                send_message(&ctx, message, 0, NULL);
+            }
         }
     }
 
