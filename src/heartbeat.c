@@ -15,7 +15,7 @@
 
 void remove_peer(chat_application_context *ctx, list_node *peer)
 {
-    char *ip_buffer = malloc(INET_ADDRSTRLEN);
+    char ip_buffer[INET_ADDRSTRLEN];
     struct in_addr addr;
     addr.s_addr = peer->data->ip_addr;
     inet_ntop(AF_INET, &addr, ip_buffer, INET_ADDRSTRLEN);
@@ -26,9 +26,6 @@ void remove_peer(chat_application_context *ctx, list_node *peer)
     peer->data->socket = -1;
 
     list_remove(&ctx->peer_list, peer->data->ip_addr);
-
-    free(ip_buffer);
-    ip_buffer = 0;
 }
 
 void send_heartbeat(list_node *peer)

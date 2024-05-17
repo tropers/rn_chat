@@ -50,7 +50,6 @@ enter_request create_enter_req_data(chat_application_context *ctx)
 {
     char *data = malloc(1);
 
-    // int offset = 0;
     int total_length = 0;
     int previous_total_length = 0;
 
