@@ -106,8 +106,9 @@ void send_message(chat_application_context *ctx, char *message,
 }
 
 // Connects to a client / client-network
-int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip,
-                    uint16_t destination_port, BOOL use_sctp)
+int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t destination_ip,
+                    uint16_t destination_port, fd_set *peer_fds,
+                    int *max_fd, BOOL use_sctp)
 {
     // socket-file destriptor
     struct sockaddr_in address;
@@ -127,21 +128,21 @@ int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip,
     {
         fprintf(stderr, "ERROR: connect failed.\n");
         close(sockfd);
-        FD_CLR(sockfd, &ctx->peer_fds);
+        FD_CLR(sockfd, peer_fds);
         sockfd = -1;
         return 0;
     }
 
     // Create enter request packet
-    enter_request req = create_enter_req_data(ctx);
+    enter_request req = create_enter_req_data(peer_list);
 
     // Add socket ot master set
-    FD_SET(sockfd, &ctx->peer_fds);
+    FD_SET(sockfd, peer_fds);
 
     packet enter_req = create_packet(
         PROTOCOL_VERSION,
         MSG_ENTER_REQ,
-        list_size_safe(ctx->peer_mutex, ctx->peer_list),
+        list_size_safe(peer_mutex, peer_list),
         req.data);
 
     send_data_packet(sockfd, &enter_req, enter_req.data, req.length);
@@ -150,9 +151,9 @@ int connect_to_peer(chat_application_context *ctx, uint32_t destination_ip,
     free(req.data);
 
     // Set maximum socket to new socket if new socket is bigger
-    if (sockfd > ctx->max_fd)
+    if (sockfd > *max_fd)
     {
-        ctx->max_fd = sockfd;
+        *max_fd = sockfd;
     }
 
     return sockfd;
@@ -273,7 +274,8 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
             }
             uint16_t port = htons((uint16_t)atoi(splitstr));
 
-            if (connect_to_peer(&ctx, ip_addr, port, use_sctp))
+            if (connect_to_peer(ctx.peer_mutex, ctx.peer_list, ip_addr, port,
+                                &ctx.peer_fds, &ctx.max_fd, use_sctp))
             {
                 printf("Connected!\n");
             }

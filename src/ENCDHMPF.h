@@ -31,7 +31,7 @@ typedef struct
 } packet;
 
 packet create_packet(char version, char type, short length, char *data);
-enter_request create_enter_req_data(chat_application_context *ctx);
+enter_request create_enter_req_data(list_node *peer_list);
 void send_packet(int sock, packet *pack);
 void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length);
 void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp);

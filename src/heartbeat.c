@@ -40,7 +40,7 @@ void send_heartbeat(list_node *peer)
 
     if (peer->data->connected)
     {
-        send(peer->data->sock, &heartbeat, HEADER_LEN, 0);
+        send_packet(peer->data->sock, &heartbeat);
     }
 }
 
