@@ -22,9 +22,9 @@ void remove_peer(chat_application_context *ctx, list_node *peer)
     inet_ntop(AF_INET, &addr, ip_buffer, INET_ADDRSTRLEN);
     fprintf(stderr, "INFO: Heartbeat for %s is up! Closing connection.\n", ip_buffer);
 
-    close(peer->data->socket);
-    FD_CLR(peer->data->socket, &ctx->peer_fds);
-    peer->data->socket = -1;
+    close(peer->data->sock);
+    FD_CLR(peer->data->sock, &ctx->peer_fds);
+    peer->data->sock = -1;
 
     list_remove(&ctx->peer_list, peer->data->ip_addr);
 }
@@ -40,7 +40,7 @@ void send_heartbeat(list_node *peer)
 
     if (peer->data->connected)
     {
-        send(peer->data->socket, &heartbeat, HEADER_LEN, 0);
+        send(peer->data->sock, &heartbeat, HEADER_LEN, 0);
     }
 }
 

@@ -11,7 +11,7 @@ typedef struct
 {
     uint32_t ip_addr;
     BOOL connected;
-    int socket;
+    int sock;
     uint16_t port;
     double heartbeat_timer;
     BOOL is_new;

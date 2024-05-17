@@ -42,13 +42,13 @@ void send_disconnect(chat_application_context *ctx)
         // Send disconnect to everyone
         if (peer->data->connected)
         {
-            send_packet(peer->data->socket, &reset);
+            send_packet(peer->data->sock, &reset);
         }
 
         // Close connection
-        close(peer->data->socket);
-        FD_CLR(peer->data->socket, &ctx->peer_fds);
-        peer->data->socket = -1;
+        close(peer->data->sock);
+        FD_CLR(peer->data->sock, &ctx->peer_fds);
+        peer->data->sock = -1;
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);
@@ -92,12 +92,12 @@ void send_message(chat_application_context *ctx, char *message,
 
                 if (strcmp(peer->data->name, user_name) == 0)
                 {
-                    send_data_packet(peer->data->socket, &message_packet, message, msg_length);
+                    send_data_packet(peer->data->sock, &message_packet, message, msg_length);
                 }
             }
             else
             {
-                send_data_packet(peer->data->socket, &message_packet, message, msg_length);
+                send_data_packet(peer->data->sock, &message_packet, message, msg_length);
             }
         }
     }

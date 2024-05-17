@@ -118,6 +118,7 @@ void *receiver_thread_func(void *args)
     FD_ZERO(&ctx->read_fds);
 
     int listener_fd = setup_listener(ctx, ctx->use_sctp, thread_args.sctp_hbinterval);
+    // TODO: Error handling
 
     struct timeval timeout = {0, 50000};
 
