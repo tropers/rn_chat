@@ -2,6 +2,9 @@ TARGET_EXEC ?= chat
 
 BUILD_DIR ?= ./build
 SRC_DIRS ?= ./src
+ASFLAGS = -Wall
+CFLAGS = -Wall
+CPPFLAGS = -Wall
 
 LDFLAGS = -lpthread
 

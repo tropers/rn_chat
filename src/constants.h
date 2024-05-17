@@ -12,17 +12,6 @@
 
 #define PORTSTRLEN 6 // Five digits + \0 "65535\0"
 
-/* Protocol definitions */
-#define PROTOCOL_VERSION 2
-#define MSG_ENTER_REQ 'E'
-#define MSG_NEW_USERS 'N'
-#define MSG_CONNECT 'C'
-#define MSG_DISCONNECT 'D'
-#define MSG_HEARTBEAT 'H'
-#define MSG_MESSAGE 'M'
-#define MSG_PRIVATE 'P'
-#define MSG_FAILED 'F'
-
 #define HEARTBEAT_TIME 20
 
 /* SCTP */

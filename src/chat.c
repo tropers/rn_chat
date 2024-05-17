@@ -18,76 +18,13 @@
 #include <sys/select.h>
 #include <errno.h>
 
+#include "ENCDHMPF.h"
 #include "chat.h"
 #include "constants.h"
 #include "helper.h"
 #include "list.h"
 #include "heartbeat.h"
 #include "receiver.h"
-
-packet create_packet(char version, char type, short length, char *data)
-{
-    return (packet){
-        .version = version,
-        .type = type,
-        .length = length,
-        .data = data};
-}
-
-void send_packet(int sock, packet *pack)
-{
-    send(sock, pack, HEADER_LEN, 0);
-}
-
-void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length)
-{
-    send(sock, pack, HEADER_LEN, 0);
-    send(sock, data_buffer, data_buf_length, 0);
-}
-
-// Returns the data created for the enter request package
-enter_request create_enter_req_data(chat_application_context *ctx)
-{
-    char *data = malloc(1);
-
-    int total_length = 0;
-    int previous_total_length = 0;
-
-    // Iterate over peers
-    for (list_node *peer = ctx->peer_list; peer != NULL; peer = peer->next)
-    {
-        const int entry_header_length = IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN;
-
-        char entry_header[entry_header_length];
-
-        // Copy IP-Address to packet-data
-        memcpy(entry_header, (char *)&peer->data->ip_addr, IP_ADDR_LEN);
-
-        // Copy port
-        // uint16_t port = PORT;
-        uint16_t port = peer->data->port;
-        memcpy(entry_header + IP_ADDR_LEN, (char *)&port, PORT_LEN);
-
-        // Copy length of name
-        uint16_t name_length = (uint16_t)strlen(peer->data->name) + 1;
-        memcpy(entry_header + IP_ADDR_LEN + NAME_LEN_LEN, (char *)&name_length, NAME_LEN_LEN);
-
-        char name[name_length];
-        // Copy name
-        memcpy(name, peer->data->name, (int)name_length);
-
-        previous_total_length = total_length;
-        total_length += entry_header_length + name_length;
-
-        data = realloc(data, total_length);
-        memcpy(data + previous_total_length, entry_header, entry_header_length);
-        memcpy(data + previous_total_length + entry_header_length, name, name_length);
-    }
-
-    return (enter_request){
-        .data = data,
-        .length = total_length};
-}
 
 void send_disconnect(chat_application_context *ctx)
 {
