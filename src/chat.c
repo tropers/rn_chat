@@ -37,7 +37,8 @@ void send_disconnect(chat_application_context *ctx)
         0,
         NULL);
 
-    for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
+    list_node* peer = ctx->peer_list;
+    while(peer != NULL)
     {
         // Send disconnect to everyone
         if (peer->data->connected)
@@ -49,6 +50,8 @@ void send_disconnect(chat_application_context *ctx)
         close(peer->data->sock);
         FD_CLR(peer->data->sock, &ctx->peer_fds);
         peer->data->sock = -1;
+
+        peer = peer->next;
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);
@@ -63,7 +66,7 @@ void send_message(chat_application_context *ctx, char *message,
     int aligned_length = msg_length;
 
     // Don't send empty messages!
-    if (strcmp(message, "\n") == 0)
+    if (!strcmp(message, "\n"))
     {
         return;
     }
@@ -81,25 +84,29 @@ void send_message(chat_application_context *ctx, char *message,
         aligned_length, // Length in 4 byte blocks
         NULL);
 
-    for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
-    { // uns selbst als head überspringen und message nur an andere schicken
-        // Send message to everyone
+    // Skip ourselves to send package only to other clients
+    list_node *peer = ctx->peer_list->next;
+    while (peer)
+    { 
         if (peer->data->connected)
         {
             if (private)
             {
                 message_packet.type = MSG_PRIVATE;
 
-                if (strcmp(peer->data->name, user_name) == 0)
+                if (!strcmp(peer->data->name, user_name))
                 {
                     send_data_packet(peer->data->sock, &message_packet, message, msg_length);
                 }
             }
             else
             {
+                // Send message to everyone
                 send_data_packet(peer->data->sock, &message_packet, message, msg_length);
             }
         }
+    
+        peer = peer->next;
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);
@@ -165,15 +172,18 @@ void show_peer_list(chat_application_context *ctx)
 
     printf("current peers:\n");
 
-    for (list_node *p = ctx->peer_list; p != NULL; p = p->next)
+    list_node *peer = ctx->peer_list;
+    while (peer)
     {
-        struct in_addr addr = {.s_addr = p->data->ip_addr};
+        struct in_addr addr = {.s_addr = peer->data->ip_addr};
         char ip_buf[INET_ADDRSTRLEN];
         char port_buf[PORTSTRLEN + 1];
-        sprintf(port_buf, "%hu", p->data->port);
+        sprintf(port_buf, "%hu", peer->data->port);
 
-        printf("%s:\n", p->data->name);
+        printf("%s:\n", peer->data->name);
         printf("  address: %s:%s\n\n", inet_ntop(AF_INET, &addr, ip_buf, INET_ADDRSTRLEN), port_buf);
+
+        peer = peer->next;
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);
@@ -202,6 +212,11 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     // Initialize list and mutex
     printf("Initializing peer list...\n");
     ctx.peer_list = list_new();
+    if (!ctx.peer_list)
+    {
+        fprintf(stderr, "ERROR: Could not initialize peer-list, exiting.");
+        exit(-1);
+    }
 
     // Retreive username
     printf("Please enter username: ");
@@ -209,6 +224,11 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     chomp(ctx.user_name);
 
     peer *user = malloc(sizeof(peer));
+    if (!user)
+    {
+        fprintf(stderr, "ERROR: Could allocate memory for local user, exiting.");
+        exit(-1);
+    }
 
     // Retrieve IP address
     printf("Please enter your IP-address: ");

@@ -63,23 +63,27 @@ void *heartbeat_thread_func(void *args)
         double current_diff = difftime(new_time, old_time);
         old_time = new_time;
 
+        pthread_mutex_lock(ctx->peer_mutex);
+
         // Send heartbeat every 10 seconds
         if (total_diff >= 10)
         {
             base_time = time(0);
 
             // Start at next to skip sending heartbeat to self
-            for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
+            list_node *peer = ctx->peer_list->next;
+            while (peer)
             {
                 // Send heartbeat to everyone
                 send_heartbeat(peer);
+
+                peer = peer->next;
             }
         }
 
-        pthread_mutex_lock(ctx->peer_mutex);
-
         // Calculate new Timer for peers
-        for (list_node *peer = ctx->peer_list->next; peer != NULL; peer = peer->next)
+        list_node *peer = ctx->peer_list->next;
+        while (peer)
         {
             peer->data->heartbeat_timer -= current_diff;
 
@@ -88,6 +92,8 @@ void *heartbeat_thread_func(void *args)
                 // Time's up, remove current peer
                 remove_peer(ctx, peer);
             }
+
+            peer = peer->next;
         }
 
         pthread_mutex_unlock(ctx->peer_mutex);

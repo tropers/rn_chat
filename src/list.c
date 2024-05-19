@@ -8,15 +8,14 @@
 list_node *list_new()
 {
     list_node *head = malloc(sizeof(list_node));
-
-    head->next = NULL;
-    head->data = NULL;
-
-    if (head == NULL)
+    if (!head)
     {
         fprintf(stderr, "ERROR: Couldn't initialize list, not enough memory.\n");
         return NULL;
     }
+
+    head->next = NULL;
+    head->data = NULL;
 
     return head;
 }
@@ -25,11 +24,10 @@ list_node *list_new()
 void list_add(list_node **head, peer *data)
 {
     // If head is NULL (after full deletion of list), create new one
-    if (*head == NULL)
+    if (!*head)
     {
         *head = malloc(sizeof(list_node));
-
-        if (*head == NULL)
+        if (!*head)
         {
             fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory.\n");
             return;
@@ -41,14 +39,15 @@ void list_add(list_node **head, peer *data)
     }
 
     // If the head doesn't contain data yet, fill it first
-    if ((*head)->data == NULL)
+    if (!(*head)->data)
     {
         (*head)->next = NULL;
         (*head)->data = data;
         return;
     }
-
-    for (list_node *node = *head; node != NULL; node = node->next)
+    
+    list_node *node = *head;
+    while (node)
     {
         if (node->data->ip_addr == data->ip_addr)
         {
@@ -56,11 +55,10 @@ void list_add(list_node **head, peer *data)
             fprintf(stderr, "ERROR: Couldn't add to list, user already exists.\n");
             return;
         }
-        if (node->next == NULL)
+        if (!node->next)
         {
             node->next = malloc(sizeof(list_node)); // Try to allocate a new element
-
-            if (node->next == NULL)
+            if (!node->next)
             {
                 fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory.\n");
                 return;
@@ -70,6 +68,8 @@ void list_add(list_node **head, peer *data)
             node->next->data = data; // Add data
             return;
         }
+
+        node = node->next;
     }
 }
 
@@ -85,7 +85,8 @@ void list_remove(list_node **head, uint32_t ip_addr)
 {
     list_node *prev = *head;
 
-    for (list_node *node = *head; node != NULL; node = node->next)
+    list_node *node = *head;
+    while (node)
     {
         if (node->data->ip_addr == ip_addr)
         {
@@ -93,6 +94,7 @@ void list_remove(list_node **head, uint32_t ip_addr)
             if (node == *head)
             {
                 list_node *next = (*head)->next;
+                free((*head)->data);
                 free(*head);
                 *head = next;
                 break;
@@ -106,6 +108,7 @@ void list_remove(list_node **head, uint32_t ip_addr)
         }
 
         prev = node;
+        node = node->next;
     }
 }
 
@@ -118,12 +121,14 @@ void list_remove_safe(pthread_mutex_t *mutex, list_node **head, uint32_t ip_addr
 
 int list_size(list_node *head)
 {
-
     int size = 0;
 
-    for (list_node *node = head; node != NULL; node = node->next)
+    list_node *node = head;
+    while (node)
     {
         ++size;
+
+        node = node->next;
     }
 
     return size;
@@ -140,7 +145,6 @@ int list_size_safe(pthread_mutex_t *mutex, list_node *head)
 
 void list_free(list_node *head)
 {
-
     list_node *current = head;
     list_node *next;
 

@@ -33,12 +33,18 @@ void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_le
 enter_request create_enter_req_data(list_node *peer_list)
 {
     char *data = malloc(1);
+    if (!data)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for request data, exiting.");
+        exit(-1);
+    }
 
     int total_length = 0;
     int previous_total_length = 0;
 
     // Iterate over peers
-    for (list_node *peer = peer_list; peer != NULL; peer = peer->next)
+    list_node *peer = peer_list;
+    while (peer)
     {
         const int entry_header_length = IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN;
 
@@ -66,6 +72,8 @@ enter_request create_enter_req_data(list_node *peer_list)
         data = realloc(data, total_length);
         memcpy(data + previous_total_length, entry_header, entry_header_length);
         memcpy(data + previous_total_length + entry_header_length, name, name_length);
+    
+        peer = peer->next;
     }
 
     return (enter_request){
@@ -117,6 +125,11 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
     {
         offset = 0;
         peer *new_peer = malloc(sizeof(peer));
+        if (!new_peer)
+        {
+            fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.");
+            exit(-1);
+        }
 
         // receive user_header
         receive_from_socket(sock, entry_header_buf, ENTRY_HEADER_LEN);
@@ -132,19 +145,28 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
 
         // Receive name
         new_peer->name = malloc(name_length + 1);
+        if (!new_peer->name)
+        {
+            fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.");
+            exit(-1);
+        }
+
         bzero(new_peer->name, name_length + 1);
         receive_from_socket(sock, new_peer->name, name_length);
 
         // Search through list to see if entry already exists
-        for (list_node *node = peer_list; node != NULL; node = node->next)
+        list_node *peer = peer_list;
+        while (peer)
         {
-            if (strcmp(node->data->name, new_peer->name) == 0)
+            if (strcmp(peer->data->name, new_peer->name) == 0)
             {
                 printf("INFO: Name taken!\n");
                 send_failed(sock);
                 free(new_peer);
                 return;
             }
+
+            peer = peer->next;
         }
 
         // Initialize new peer
@@ -178,13 +200,16 @@ void propagate_new_peer(list_node *peer_list, int sock)
         req.data);
 
     // send recently added users to older users in list and set newUsers = oldusers
-    for (list_node *node = peer_list->next; node != NULL; node = node->next)
+    list_node *peer = peer_list->next;
+    while (peer)
     {
-        if (!(node->data->is_new) && node->data->sock != sock)
+        if (!(peer->data->is_new) && peer->data->sock != sock)
         {
-            send_data_packet(node->data->sock, &new_user, new_user.data, req.length);
-            node->data->is_new = 0;
+            send_data_packet(peer->data->sock, &new_user, new_user.data, req.length);
+            peer->data->is_new = 0;
         }
+
+        peer = peer->next;
     }
 
     // Free data from enter request
@@ -270,13 +295,16 @@ void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, B
 
     // Send connect to all new peers
     // Send data
-    for (list_node *node = peer_list->next; node != NULL; node = node->next)
+    list_node *peer = peer_list->next;
+    while (peer)
     {
-        if (node->data->is_new)
+        if (peer->data->is_new)
         {
-            connect_to_new_peer(peer_list, node->data, &connect_packet,
+            connect_to_new_peer(peer_list, peer->data, &connect_packet,
                                 peer_connect_buffer, offset, use_sctp, peer_fds, max_fd);
         }
+
+        peer = peer->next;
     }
 }
 
@@ -293,6 +321,12 @@ void handle_connect(list_node *peer_list, int sock)
     char entry_header_buf[ENTRY_HEADER_LEN];
 
     peer *new_peer = malloc(sizeof(peer));
+    if (!new_peer)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.");
+        exit(-1);
+    }
+
     int offset = 0;
 
     receive_from_socket(sock, entry_header_buf, ENTRY_HEADER_LEN);
@@ -308,6 +342,12 @@ void handle_connect(list_node *peer_list, int sock)
 
     // Receive name
     new_peer->name = malloc(name_length + 1);
+    if (!new_peer->name)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for new peers name, exiting.");
+        exit(-1);
+    }
+
     bzero(new_peer->name, name_length + 1);
 
     char name_buf[name_length + 1];
@@ -329,14 +369,16 @@ void handle_connect(list_node *peer_list, int sock)
 
 void remove_peer_by_socket(list_node *peer_list, int sock)
 {
-    for (list_node *node = peer_list; node != NULL; node = node->next)
+    list_node *peer = peer_list;
+    while (peer)
     {
-        if (node->data->sock == sock)
+        if (peer->data->sock == sock)
         {
-            uint32_t peer_ip = node->data->ip_addr;
+            uint32_t peer_ip = peer->data->ip_addr;
             list_remove(&peer_list, peer_ip);
-            break;
         }
+
+        peer = peer->next;
     }
 }
 
@@ -346,12 +388,15 @@ void handle_message(list_node *peer_list, int sock, size_t packet_length, BOOL i
 
     receive_from_socket(sock, data_buffer, packet_length);
 
-    for (list_node *node = peer_list; node != NULL; node = node->next)
+    list_node *peer = peer_list;
+    while (peer)
     {
-        if (node->data->sock == sock)
+        if (peer->data->sock == sock)
         {
-            print_message(node->data, data_buffer, is_private);
+            print_message(peer->data, data_buffer, is_private);
         }
+
+        peer = peer->next;
     }
 }
 
@@ -389,17 +434,16 @@ void handle_heartbeat(list_node *peer_list, int sock, BOOL use_sctp)
         return;
 
     // Reset heartbeat of peer
-    for (list_node *peer = peer_list; peer != NULL; peer = peer->next)
+    list_node *peer = peer_list;
+    while (peer)
     {
-        if (peer->data->sock != sock)
-        {
-            continue;
-        }
-        else
+        if (peer->data->sock == sock)
         {
             // Peer found -> Reset timer
             peer->data->heartbeat_timer = HEARTBEAT_TIME;
         }
+
+        peer = peer->next;
     }
 }
 
@@ -462,13 +506,15 @@ void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp)
         }
 
         // Remove client from list if error in connection has occured
-        for (list_node *node = ctx->peer_list->next; node != NULL; node = node->next)
+        list_node *peer = ctx->peer_list->next;
+        while (peer)
         {
-            if (node->data->sock == sock)
+            if (peer->data->sock == sock)
             {
-                list_remove(&ctx->peer_list, node->data->ip_addr);
-                break;
+                list_remove(&ctx->peer_list, peer->data->ip_addr);
             }
+
+            peer = peer->next;
         }
 
         close(sock);                  // bye!
