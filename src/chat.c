@@ -18,7 +18,7 @@
 #include <sys/select.h>
 #include <errno.h>
 
-#include "ENCDHMPF.h"
+#include "ECNDMFHP.h"
 #include "chat.h"
 #include "constants.h"
 #include "helper.h"

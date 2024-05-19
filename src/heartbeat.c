@@ -10,7 +10,7 @@
 #include <sys/select.h>
 
 #include "heartbeat.h"
-#include "ENCDHMPF.h"
+#include "ECNDMFHP.h"
 #include "chat.h"
 #include "list.h"
 

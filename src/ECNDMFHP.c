@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 #include <netinet/sctp.h>
 
-#include "ENCDHMPF.h"
+#include "ECNDMFHP.h"
 #include "helper.h"
 
 packet create_packet(char version, char type, short length, char *data)
@@ -135,6 +135,18 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
         bzero(new_peer->name, name_length + 1);
         receive_from_socket(sock, new_peer->name, name_length);
 
+        // Search through list to see if entry already exists
+        for (list_node *node = peer_list; node != NULL; node = node->next)
+        {
+            if (strcmp(node->data->name, new_peer->name) == 0)
+            {
+                printf("INFO: Name taken!\n");
+                send_failed(sock);
+                free(new_peer);
+                return;
+            }
+        }
+
         // Initialize new peer
         new_peer->connected = 1;
 
@@ -149,21 +161,6 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
         }
         new_peer->is_new = 1;
         new_peer->heartbeat_timer = HEARTBEAT_TIME;
-
-        // Check if name of connecting client is already taken
-        if (i == 0 && type == 'E')
-        {
-            // Search through list to see if entry already exists
-            for (list_node *node = peer_list; node != NULL; node = node->next)
-            {
-                if (strcmp(node->data->name, new_peer->name) == 0)
-                {
-                    printf("INFO: Name taken!\n");
-                    send_failed(sock);
-                    return;
-                }
-            }
-        }
 
         printf("INFO: %s joined the chat.\n", new_peer->name);
         list_add(&peer_list, new_peer);

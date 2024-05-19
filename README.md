@@ -1,3 +1,4 @@
-# RN Chat
+# ECNDMFHP p2p Chat
 
-Dieses Repository enthält den Code zum Chatclient für das Chatprotokoll ECNMDFHP.
+This repository contains the p2p chat client using the ECNDMFHP protocol defined in
+the "Rechnernetze" (computer networks) course at HAW Hamburg.

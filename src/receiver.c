@@ -9,7 +9,7 @@
 #include <errno.h>
 
 #include "receiver.h"
-#include "ENCDHMPF.h"
+#include "ECNDMFHP.h"
 #include "helper.h"
 #include "chat.h"
 

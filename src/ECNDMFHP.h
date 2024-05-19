@@ -1,5 +1,5 @@
-#ifndef ENCDHMPF_H
-#define ENCDHMPF_H
+#ifndef ECNDMFHP_H
+#define ECNDMFHP_H
 
 #include "chat.h"
 
