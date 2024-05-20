@@ -58,8 +58,8 @@ void send_message(chat_application_context *ctx, char *message,
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
-    int msg_length = strlen(message) + 1;
-    int aligned_length = msg_length;
+    int message_length = strlen(message) + 1;
+    int aligned_length = message_length;
 
     // Don't send empty messages!
     if (!strcmp(message, "\n"))
@@ -68,13 +68,17 @@ void send_message(chat_application_context *ctx, char *message,
     }
 
     // Align message block
-    if (msg_length % 4 != 0)
+    if (message_length % 4 != 0)
     {
-        aligned_length = msg_length + (4 - (msg_length % 4));
+        aligned_length = message_length + (4 - (message_length % 4));
     }
 
     // Create message packet
     packet message_packet = create_packet(MSG_MESSAGE, aligned_length); // Length in 4 byte blocks
+    data_buffer message_buffer = {
+        .data = message,
+        .length = aligned_length
+    };
 
     // Skip ourselves to send package only to other clients
     list_node *peer = ctx->peer_list->next;
@@ -88,13 +92,13 @@ void send_message(chat_application_context *ctx, char *message,
 
                 if (!strcmp(peer->data->name, user_name))
                 {
-                    send_data_packet(peer->data->sock, &message_packet, message, msg_length);
+                    send_data_packet(peer->data->sock, &message_packet, &message_buffer);
                 }
             }
             else
             {
                 // Send message to everyone
-                send_data_packet(peer->data->sock, &message_packet, message, msg_length);
+                send_data_packet(peer->data->sock, &message_packet, &message_buffer);
             }
         }
     
@@ -132,18 +136,16 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
         return 0;
     }
 
-    // Create enter request packet
-    enter_request req = create_enter_req_data(peer_list);
-
     // Add socket ot master set
     FD_SET(sockfd, peer_fds);
 
-    packet enter_req = create_packet(MSG_ENTER_REQ, req.length);
+    data_buffer request_buffer = create_enter_req_data(peer_list);
+    packet enter_req = create_packet(MSG_ENTER_REQ, request_buffer.length);
 
-    send_data_packet(sockfd, &enter_req, req.data, req.length);
+    send_data_packet(sockfd, &enter_req, &request_buffer);
 
     // Free data from enter request
-    free(req.data);
+    free(request_buffer.data);
 
     // Set maximum socket to new socket if new socket is bigger
     if (sockfd > *max_fd)

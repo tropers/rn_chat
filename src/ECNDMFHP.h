@@ -18,20 +18,25 @@ typedef struct
 {
     char *data;
     size_t length;
-} enter_request;
+} data_buffer;
 
-// Packet datatype
+typedef struct
+{
+    peer *peer;
+    size_t peer_size;
+} peer_tuple;
+
 typedef struct
 {
     char version;
     char type;
-    short length;
+    size_t length;
 } packet;
 
 packet create_packet(char type, short length);
-enter_request create_enter_req_data(list_node *peer_list);
+data_buffer create_enter_req_data(list_node *peer_list);
 void send_packet(int sock, packet *pack);
-void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length);
+void send_data_packet(int sock, packet *pack, data_buffer *data_buffer);
 void recv_packet(chat_application_context *ctx, int sock);
 
 #endif

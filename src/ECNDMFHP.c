@@ -22,14 +22,77 @@ void send_packet(int sock, packet *pack)
     send(sock, pack, HEADER_LEN, 0);
 }
 
-void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buffer_length)
+void send_data_packet(int sock, packet *pack, data_buffer *data_buffer)
 {
     send(sock, pack, HEADER_LEN, 0);
-    send(sock, data_buffer, data_buffer_length, 0);
+    send(sock, data_buffer->data, data_buffer->length, 0);
+}
+
+data_buffer serialize_peer_data(peer *peer)
+{
+    int buffer_offset = 0;
+    uint16_t name_length = (uint16_t)strlen(peer->name) + 1; // + 1 for null-terminator
+    char *serialized_peer = malloc(sizeof(peer) + name_length);
+
+    // Copy IP-Address to packet-data
+    memcpy(serialized_peer + buffer_offset, (char *)&peer->ip_addr, IP_ADDR_LEN);
+    buffer_offset += IP_ADDR_LEN;
+
+    // Copy port
+    memcpy(serialized_peer + buffer_offset, (char *)&peer->port, PORT_LEN);
+    buffer_offset += PORT_LEN;
+
+    // Copy length of name
+    memcpy(serialized_peer + buffer_offset, (char *)&name_length, NAME_LEN_LEN);
+    buffer_offset += NAME_LEN_LEN;
+
+    // Copy name
+    memcpy(serialized_peer + buffer_offset, peer->name, (int)name_length);
+    buffer_offset += (int)name_length;
+
+    return (data_buffer){
+        .data = serialized_peer,
+        .length = buffer_offset};
+}
+
+peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
+{
+    int buffer_offset = 0;
+    peer *new_peer = malloc(sizeof(peer));
+    if (!new_peer)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
+        exit(-1);
+    }
+
+    new_peer->ip_addr = *((uint32_t *)(packet_data_buffer->data + buffer_offset));
+    buffer_offset += IP_ADDR_LEN;
+
+    new_peer->port = *((uint16_t *)(packet_data_buffer->data + buffer_offset));
+    buffer_offset += PORT_LEN;
+
+    int name_length = *((uint16_t *)(packet_data_buffer->data + buffer_offset));
+    buffer_offset += NAME_LEN_LEN;
+
+    new_peer->name = malloc(name_length + 1);
+    if (!new_peer->name)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.\n");
+        exit(-1);
+    }
+
+    bzero(new_peer->name, name_length + 1);
+
+    memcpy(new_peer->name, packet_data_buffer->data + buffer_offset, name_length);
+
+    return (peer_tuple) {
+        .peer = new_peer,
+        .peer_size = buffer_offset
+    };
 }
 
 // Returns the data created for the enter request package
-enter_request create_enter_req_data(list_node *peer_list)
+data_buffer create_enter_req_data(list_node *peer_list)
 {
     char *data = malloc(1);
     if (!data)
@@ -45,37 +108,20 @@ enter_request create_enter_req_data(list_node *peer_list)
     list_node *peer = peer_list;
     while (peer)
     {
-        const int entry_header_length = IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN;
-
-        char entry_header[entry_header_length];
-
-        // Copy IP-Address to packet-data
-        memcpy(entry_header, (char *)&peer->data->ip_addr, IP_ADDR_LEN);
-
-        // Copy port
-        // uint16_t port = PORT;
-        uint16_t port = peer->data->port;
-        memcpy(entry_header + IP_ADDR_LEN, (char *)&port, PORT_LEN);
-
-        // Copy length of name
-        uint16_t name_length = (uint16_t)strlen(peer->data->name) + 1;
-        memcpy(entry_header + IP_ADDR_LEN + NAME_LEN_LEN, (char *)&name_length, NAME_LEN_LEN);
-
-        char name[name_length];
-        // Copy name
-        memcpy(name, peer->data->name, (int)name_length);
-
         previous_total_length = total_length;
-        total_length += entry_header_length + name_length;
+        data_buffer buffer = serialize_peer_data(peer->data);
+        total_length += buffer.length;
 
+        // Increase size of data buffer for more peers and copy serialized peer to buffer
         data = realloc(data, total_length);
-        memcpy(data + previous_total_length, entry_header, entry_header_length);
-        memcpy(data + previous_total_length + entry_header_length, name, name_length);
+        memcpy(data + previous_total_length, buffer.data, buffer.length);
 
         peer = peer->next;
+
+        free(buffer.data);
     }
 
-    return (enter_request){
+    return (data_buffer){
         .data = data,
         .length = total_length};
 }
@@ -101,11 +147,11 @@ void print_message(peer *peer, char *data_buffer, BOOL is_private)
     fflush(stdout);
 }
 
-int receive_from_socket(int sock, char *buffer, size_t length)
+int receive_from_socket(int sock, data_buffer *buffer)
 {
     int bytes_received = 0;
 
-    if ((bytes_received = recv(sock, buffer, length, 0)) <= 0)
+    if ((bytes_received = recv(sock, buffer->data, buffer->length, 0)) <= 0)
     {
         // If there's an error, the connection is reset
         if (bytes_received == 0)
@@ -124,60 +170,26 @@ int receive_from_socket(int sock, char *buffer, size_t length)
     return bytes_received;
 }
 
-int parse_new_peer(int sock, char *packet_data_buffer, peer *new_peer)
+void parse_new_peers(list_node *peer_list, int sock, data_buffer *packet_data_buffer, char type)
 {
-    int buffer_offset = 0;
-
-    new_peer->ip_addr = *((uint32_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += IP_ADDR_LEN;
-
-    new_peer->port = *((uint16_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += PORT_LEN;
-
-    int name_length = *((uint16_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += NAME_LEN_LEN;
-
-    // Receive name
-    new_peer->name = malloc(name_length + 1);
-    if (!new_peer->name)
-    {
-        fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.\n");
-        exit(-1);
-    }
-
-    bzero(new_peer->name, name_length + 1);
-
-    memcpy(new_peer->name, packet_data_buffer + buffer_offset, name_length);
-
-    return buffer_offset;
-}
-
-void parse_new_peers(list_node *peer_list, int sock, char *packet_data_buffer, char type, size_t length)
-{
-    int buffer_offset = 0;
+    int peer_buffer_offset = 0;
     int new_peer_index = 0;
 
-    while (buffer_offset <= length)
+    while (peer_buffer_offset <= packet_data_buffer->length)
     {
-        peer *new_peer = malloc(sizeof(peer));
-        if (!new_peer)
-        {
-            fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
-            exit(-1);
-        }
-
-        buffer_offset += parse_new_peer(sock, packet_data_buffer + buffer_offset, new_peer);
+        peer_tuple new_peer = deserialize_peer_data(packet_data_buffer + peer_buffer_offset);
+        peer_buffer_offset += new_peer.peer_size;
 
         // Search through list to see if entry already exists
         list_node *peer = peer_list;
         while (peer)
         {
-            if (!strcmp(peer->data->name, new_peer->name))
+            if (!strcmp(peer->data->name, new_peer.peer->name))
             {
                 printf("INFO: Name taken!\n");
                 send_failed(sock);
-                free(new_peer->name);
-                free(new_peer);
+                free(new_peer.peer->name);
+                free(new_peer.peer);
                 return;
             }
 
@@ -185,23 +197,23 @@ void parse_new_peers(list_node *peer_list, int sock, char *packet_data_buffer, c
         }
 
         // Initialize new peer
-        new_peer->connected = 1;
+        new_peer.peer->connected = 1;
 
         // TODO: What does this do?
         // We know the socket from the connecting peer
         if (new_peer_index == 0 && type != MSG_NEW_USERS)
         {
-            new_peer->sock = sock;
+            new_peer.peer->sock = sock;
         }
         else
         {
-            new_peer->sock = -1; // No socket from other participants known
+            new_peer.peer->sock = -1; // No socket from other participants known
         }
-        new_peer->is_new = 1;
-        new_peer->heartbeat_timer = HEARTBEAT_TIME;
+        new_peer.peer->is_new = 1;
+        new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
-        printf("INFO: %s joined the chat.\n", new_peer->name);
-        list_add(&peer_list, new_peer);
+        printf("INFO: %s joined the chat.\n", new_peer.peer->name);
+        list_add(&peer_list, new_peer.peer);
 
         new_peer_index++;
     }
@@ -209,9 +221,9 @@ void parse_new_peers(list_node *peer_list, int sock, char *packet_data_buffer, c
 
 void propagate_new_peers(list_node *peer_list, int sock)
 {
-    enter_request req = create_enter_req_data(peer_list);
+    data_buffer request_buffer = create_enter_req_data(peer_list);
 
-    packet new_user = create_packet(MSG_NEW_USERS, req.length);
+    packet new_user = create_packet(MSG_NEW_USERS, request_buffer.length);
 
     // Send recently added users to older users in list and set newUsers = oldusers
     list_node *peer = peer_list->next;
@@ -219,20 +231,18 @@ void propagate_new_peers(list_node *peer_list, int sock)
     {
         if (!(peer->data->is_new) && peer->data->sock != sock)
         {
-            send_data_packet(peer->data->sock, &new_user, req.data, new_user.length);
+            send_data_packet(peer->data->sock, &new_user, &request_buffer);
             peer->data->is_new = 0;
         }
 
         peer = peer->next;
     }
 
-    // Free data from enter request
-    free(req.data);
+    free(request_buffer.data);
 }
 
 void connect_to_new_peer(list_node *peer_list, peer *peer, packet *connect_packet,
-                         char *peer_connect_buffer, int buffer_length, BOOL use_sctp,
-                         fd_set *peer_fds, int *max_fd)
+                         data_buffer *data_buffer, BOOL use_sctp, fd_set *peer_fds, int *max_fd)
 {
     // If not connected to peer yet, open connection
     if (peer->sock < 0)
@@ -273,35 +283,18 @@ void connect_to_new_peer(list_node *peer_list, peer *peer, packet *connect_packe
         }
     }
 
-    send_data_packet(peer->sock, connect_packet, peer_connect_buffer, buffer_length);
+    send_data_packet(peer->sock, connect_packet, data_buffer);
     peer->is_new = 0;
 }
+
 
 void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, BOOL use_sctp)
 {
     packet connect_packet = create_packet(MSG_CONNECT, 0);
 
-    char peer_connect_buffer[INPUT_BUFFER_LEN];
-
-    int buffer_offset = 0;
-
-    // Copy IP-Address to packet-data
-    memcpy(peer_connect_buffer + buffer_offset, (char *)&peer_list->data->ip_addr, IP_ADDR_LEN);
-    buffer_offset += IP_ADDR_LEN;
-
-    // Copy port
-    uint16_t port = PORT;
-    memcpy(peer_connect_buffer + buffer_offset, (char *)&port, PORT_LEN);
-    buffer_offset += PORT_LEN;
-
-    // Copy length of name
-    uint16_t name_len = (uint16_t)strlen(peer_list->data->name) + 1; // + 1 for null-terminator
-    memcpy(peer_connect_buffer + buffer_offset, (char *)&name_len, NAME_LEN_LEN);
-    buffer_offset += NAME_LEN_LEN;
-
-    // Copy name
-    memcpy(peer_connect_buffer + buffer_offset, peer_list->data->name, (int)name_len);
-    buffer_offset += (int)name_len;
+    // Create data buffer of ourselves 
+    peer us = *peer_list->data;
+    data_buffer peer_connect_buffer = serialize_peer_data(&us);
 
     // Send connect to all new peers
     // Send data
@@ -311,58 +304,33 @@ void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, B
         if (peer->data->is_new)
         {
             connect_to_new_peer(peer_list, peer->data, &connect_packet,
-                                peer_connect_buffer, buffer_offset, use_sctp, peer_fds, max_fd);
+                                &peer_connect_buffer, use_sctp, peer_fds, max_fd);
         }
 
         peer = peer->next;
     }
+
+    free(peer_connect_buffer.data);
 }
 
-void handle_enter_req(list_node *peer_list, int sock, char *packet_data_buffer, size_t length,
+void handle_enter_req(list_node *peer_list, int sock, data_buffer *packet_data_buffer,
                       char type, BOOL use_sctp, fd_set *peer_fds, int *max_fd)
 {
-    parse_new_peers(peer_list, sock, packet_data_buffer, type, length);
+    parse_new_peers(peer_list, sock, packet_data_buffer, type);
     propagate_new_peers(peer_list, sock);
     connect_to_new_peers(peer_list, peer_fds, max_fd, use_sctp);
 }
 
-void handle_connect(list_node *peer_list, int sock, char *packet_data_buffer, size_t length)
+void handle_connect(list_node *peer_list, int sock, data_buffer *packet_data_buffer)
 {
-    peer *new_peer = malloc(sizeof(peer));
-    if (!new_peer)
-    {
-        fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
-        exit(-1);
-    }
+    peer_tuple new_peer = deserialize_peer_data(packet_data_buffer);
 
-    int buffer_offset = 0;
+    new_peer.peer->sock = sock;
+    new_peer.peer->connected = 1;
+    new_peer.peer->is_new = 0;
+    new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
-    new_peer->ip_addr = *((uint32_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += IP_ADDR_LEN;
-
-    new_peer->port = *((uint16_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += PORT_LEN;
-
-    int name_length = *((uint16_t *)(packet_data_buffer + buffer_offset));
-    buffer_offset += NAME_LEN_LEN;
-
-    // Receive name
-    new_peer->name = malloc(name_length + 1);
-    if (!new_peer->name)
-    {
-        fprintf(stderr, "ERROR: Could not allocate memory for new peers name, exiting.\n");
-        exit(-1);
-    }
-
-    memcpy (new_peer->name, packet_data_buffer + buffer_offset, name_length);
-
-    new_peer->sock = sock;
-    new_peer->connected = 1;
-    new_peer->is_new = 0;
-    new_peer->heartbeat_timer = HEARTBEAT_TIME;
-
-    list_add(&peer_list, new_peer);
-
+    list_add(&peer_list, new_peer.peer);
     printf("Connect received.\n");
 }
 
@@ -381,14 +349,14 @@ void remove_peer_by_socket(list_node *peer_list, int sock)
     }
 }
 
-void handle_message(list_node *peer_list, int sock, char *packet_data_buffer, BOOL is_private)
+void handle_message(list_node *peer_list, int sock, data_buffer *packet_data_buffer, BOOL is_private)
 {
     list_node *peer = peer_list;
     while (peer)
     {
         if (peer->data->sock == sock)
         {
-            print_message(peer->data, packet_data_buffer, is_private);
+            print_message(peer->data, packet_data_buffer->data, is_private);
         }
 
         peer = peer->next;
@@ -407,9 +375,9 @@ void handle_disconnect(list_node *peer_list, int sock, fd_set *peer_fds)
     sock = -1;
 }
 
-void handle_failed(list_node *peer_list, int sock, char *packet_data_buffer, fd_set *peer_fds)
+void handle_failed(list_node *peer_list, int sock, data_buffer *packet_data_buffer, fd_set *peer_fds)
 {
-    printf("Failed received with code: %d\n", *((int32_t*)packet_data_buffer));
+    printf("Failed received with code: %d\n", *((int32_t *)packet_data_buffer->data));
 
     FD_CLR(sock, peer_fds); // remove from master set
     close(sock);
@@ -439,21 +407,21 @@ void handle_heartbeat(list_node *peer_list, int sock, BOOL use_sctp)
     }
 }
 
-void parse_packet(list_node *peer_list, int sock, packet *incoming_packet, char *packet_data_buffer,
+void parse_packet(list_node *peer_list, int sock, packet *incoming_packet, data_buffer *packet_data_buffer,
                   BOOL use_sctp, fd_set *peer_fds, int *max_fd)
 {
     switch (incoming_packet->type)
     {
     case MSG_NEW_USERS:
     case MSG_ENTER_REQ:
-        handle_enter_req(peer_list, sock, packet_data_buffer, incoming_packet->length,
+        handle_enter_req(peer_list, sock, packet_data_buffer,
                          incoming_packet->type, use_sctp, peer_fds, max_fd);
         break;
     case MSG_FAILED:
         handle_failed(peer_list, sock, packet_data_buffer, peer_fds);
         break;
     case MSG_CONNECT:
-        handle_connect(peer_list, sock, packet_data_buffer, incoming_packet->length);
+        handle_connect(peer_list, sock, packet_data_buffer);
         break;
     case MSG_DISCONNECT:
         handle_disconnect(peer_list, sock, peer_fds);
@@ -477,10 +445,13 @@ void recv_packet(chat_application_context *ctx, int sock)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
-    char header_buffer[HEADER_LEN];
+    data_buffer header_buffer = {
+        .data = malloc(HEADER_LEN),
+        .length = HEADER_LEN
+    };
 
     // Read header of packet
-    if (receive_from_socket(sock, header_buffer, HEADER_LEN) <= 0)
+    if (receive_from_socket(sock, &header_buffer) == 0)
     {
         // Remove client from list if error in connection has occured
         list_node *peer = ctx->peer_list->next;
@@ -501,14 +472,19 @@ void recv_packet(chat_application_context *ctx, int sock)
     else
     {
         packet incoming_packet;
-        memcpy(&incoming_packet, header_buffer, HEADER_LEN);
+        memcpy(&incoming_packet, header_buffer.data, header_buffer.length);
 
         // Read data section of packet
-        char *packet_data_buffer = malloc(incoming_packet.length);
-        receive_from_socket(sock, packet_data_buffer, incoming_packet.length);
+        data_buffer packet_data_buffer = {
+            .data = malloc(incoming_packet.length),
+            .length = incoming_packet.length
+        };
+        receive_from_socket(sock, &packet_data_buffer);
 
-        parse_packet(ctx->peer_list, sock, &incoming_packet, packet_data_buffer, ctx->use_sctp,
+        parse_packet(ctx->peer_list, sock, &incoming_packet, &packet_data_buffer, ctx->use_sctp,
                      &ctx->peer_fds, &ctx->max_fd);
+
+        free(packet_data_buffer.data);
     }
 
     pthread_mutex_unlock(ctx->peer_mutex);
