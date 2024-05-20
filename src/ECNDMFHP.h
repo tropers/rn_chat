@@ -17,7 +17,7 @@
 typedef struct
 {
     char *data;
-    int length;
+    size_t length;
 } enter_request;
 
 // Packet datatype
@@ -26,11 +26,9 @@ typedef struct
     char version;
     char type;
     short length;
-
-    char *data;
 } packet;
 
-packet create_packet(char version, char type, short length, char *data);
+packet create_packet(char version, char type, short length);
 enter_request create_enter_req_data(list_node *peer_list);
 void send_packet(int sock, packet *pack);
 void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length);

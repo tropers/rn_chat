@@ -9,13 +9,12 @@
 #include "ECNDMFHP.h"
 #include "helper.h"
 
-packet create_packet(char version, char type, short length, char *data)
+packet create_packet(char version, char type, short length)
 {
     return (packet){
         .version = version,
         .type = type,
-        .length = length,
-        .data = data};
+        .length = length};
 }
 
 void send_packet(int sock, packet *pack)
@@ -23,10 +22,10 @@ void send_packet(int sock, packet *pack)
     send(sock, pack, HEADER_LEN, 0);
 }
 
-void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buf_length)
+void send_data_packet(int sock, packet *pack, char *data_buffer, int data_buffer_length)
 {
     send(sock, pack, HEADER_LEN, 0);
-    send(sock, data_buffer, data_buf_length, 0);
+    send(sock, data_buffer, data_buffer_length, 0);
 }
 
 // Returns the data created for the enter request package
@@ -35,7 +34,7 @@ enter_request create_enter_req_data(list_node *peer_list)
     char *data = malloc(1);
     if (!data)
     {
-        fprintf(stderr, "ERROR: Could not allocate memory for request data, exiting.");
+        fprintf(stderr, "ERROR: Could not allocate memory for request data, exiting.\n");
         exit(-1);
     }
 
@@ -72,7 +71,7 @@ enter_request create_enter_req_data(list_node *peer_list)
         data = realloc(data, total_length);
         memcpy(data + previous_total_length, entry_header, entry_header_length);
         memcpy(data + previous_total_length + entry_header_length, name, name_length);
-    
+
         peer = peer->next;
     }
 
@@ -86,9 +85,7 @@ void send_failed(int sock)
     // Create failed packet
     packet failed = create_packet(
         PROTOCOL_VERSION,
-        MSG_FAILED,
-        1, // 1 single byte for the error code
-        NULL);
+        MSG_FAILED, 1); // 1 single byte for the error code
 
     send_packet(sock, &failed);
 }
@@ -106,62 +103,82 @@ void print_message(peer *peer, char *data_buffer, BOOL is_private)
     fflush(stdout);
 }
 
-void receive_from_socket(int sock, char *buffer, int length)
+int receive_from_socket(int sock, char *buffer, size_t length)
 {
+    int bytes_received = 0;
 
-    if (recv(sock, buffer, length, 0) <= 0)
+    if ((bytes_received = recv(sock, buffer, length, 0)) <= 0)
     {
-        fprintf(stderr, "ERROR: Receiving data.\n");
-        exit(4);
+        // If there's an error, the connection is reset
+        if (bytes_received == 0)
+        {
+            // Connection is closed
+            printf("INFO: Socket %d hung up.\n", sock);
+        }
+        else
+        {
+            fprintf(stderr, "ERROR: Error in recv().\n");
+            close(sock);
+            exit(4);
+        }
     }
+
+    return bytes_received;
 }
 
-void receive_new_peer(list_node *peer_list, int sock, char type, int length)
+int parse_new_peer(int sock, char *packet_data_buffer, peer *new_peer)
 {
-    int offset = 0;
-    char entry_header_buf[ENTRY_HEADER_LEN];
+    int buffer_offset = 0;
 
-    for (int i = 0; i < length; i++)
+    new_peer->ip_addr = *((uint32_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += IP_ADDR_LEN;
+
+    new_peer->port = *((uint16_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += PORT_LEN;
+
+    int name_length = *((uint16_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += NAME_LEN_LEN;
+
+    // Receive name
+    new_peer->name = malloc(name_length + 1);
+    if (!new_peer->name)
     {
-        offset = 0;
+        fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.\n");
+        exit(-1);
+    }
+
+    bzero(new_peer->name, name_length + 1);
+
+    memcpy(new_peer->name, packet_data_buffer + buffer_offset, name_length);
+
+    return buffer_offset;
+}
+
+void parse_new_peers(list_node *peer_list, int sock, char *packet_data_buffer, char type, size_t length)
+{
+    int buffer_offset = 0;
+    int new_peer_index = 0;
+
+    while (buffer_offset <= length)
+    {
         peer *new_peer = malloc(sizeof(peer));
         if (!new_peer)
         {
-            fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.");
+            fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
             exit(-1);
         }
 
-        // receive user_header
-        receive_from_socket(sock, entry_header_buf, ENTRY_HEADER_LEN);
-
-        new_peer->ip_addr = *((uint32_t *)(entry_header_buf + offset));
-        offset += IP_ADDR_LEN;
-
-        new_peer->port = *((uint16_t *)(entry_header_buf + offset));
-        offset += PORT_LEN;
-
-        int name_length = *((uint16_t *)(entry_header_buf + offset));
-        offset += NAME_LEN_LEN;
-
-        // Receive name
-        new_peer->name = malloc(name_length + 1);
-        if (!new_peer->name)
-        {
-            fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.");
-            exit(-1);
-        }
-
-        bzero(new_peer->name, name_length + 1);
-        receive_from_socket(sock, new_peer->name, name_length);
+        buffer_offset += parse_new_peer(sock, packet_data_buffer + buffer_offset, new_peer);
 
         // Search through list to see if entry already exists
         list_node *peer = peer_list;
         while (peer)
         {
-            if (strcmp(peer->data->name, new_peer->name) == 0)
+            if (!strcmp(peer->data->name, new_peer->name))
             {
                 printf("INFO: Name taken!\n");
                 send_failed(sock);
+                free(new_peer->name);
                 free(new_peer);
                 return;
             }
@@ -172,8 +189,9 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
         // Initialize new peer
         new_peer->connected = 1;
 
+        // TODO: What does this do?
         // We know the socket from the connecting peer
-        if (i == 0 && type != MSG_NEW_USERS)
+        if (new_peer_index == 0 && type != MSG_NEW_USERS)
         {
             new_peer->sock = sock;
         }
@@ -186,26 +204,27 @@ void receive_new_peer(list_node *peer_list, int sock, char type, int length)
 
         printf("INFO: %s joined the chat.\n", new_peer->name);
         list_add(&peer_list, new_peer);
+
+        new_peer_index++;
     }
 }
 
-void propagate_new_peer(list_node *peer_list, int sock)
+void propagate_new_peers(list_node *peer_list, int sock)
 {
     enter_request req = create_enter_req_data(peer_list);
 
     packet new_user = create_packet(
         PROTOCOL_VERSION,
         MSG_NEW_USERS,
-        list_size(peer_list),
-        req.data);
+        req.length);
 
-    // send recently added users to older users in list and set newUsers = oldusers
+    // Send recently added users to older users in list and set newUsers = oldusers
     list_node *peer = peer_list->next;
     while (peer)
     {
         if (!(peer->data->is_new) && peer->data->sock != sock)
         {
-            send_data_packet(peer->data->sock, &new_user, new_user.data, req.length);
+            send_data_packet(peer->data->sock, &new_user, req.data, new_user.length);
             peer->data->is_new = 0;
         }
 
@@ -268,30 +287,29 @@ void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, B
     packet connect_packet = create_packet(
         PROTOCOL_VERSION,
         MSG_CONNECT,
-        0,
-        NULL);
+        0);
 
     char peer_connect_buffer[INPUT_BUFFER_LEN];
 
-    int offset = 0;
+    int buffer_offset = 0;
 
     // Copy IP-Address to packet-data
-    memcpy(peer_connect_buffer + offset, (char *)&peer_list->data->ip_addr, IP_ADDR_LEN);
-    offset += IP_ADDR_LEN;
+    memcpy(peer_connect_buffer + buffer_offset, (char *)&peer_list->data->ip_addr, IP_ADDR_LEN);
+    buffer_offset += IP_ADDR_LEN;
 
     // Copy port
     uint16_t port = PORT;
-    memcpy(peer_connect_buffer + offset, (char *)&port, PORT_LEN);
-    offset += PORT_LEN;
+    memcpy(peer_connect_buffer + buffer_offset, (char *)&port, PORT_LEN);
+    buffer_offset += PORT_LEN;
 
     // Copy length of name
     uint16_t name_len = (uint16_t)strlen(peer_list->data->name) + 1; // + 1 for null-terminator
-    memcpy(peer_connect_buffer + offset, (char *)&name_len, NAME_LEN_LEN);
-    offset += NAME_LEN_LEN;
+    memcpy(peer_connect_buffer + buffer_offset, (char *)&name_len, NAME_LEN_LEN);
+    buffer_offset += NAME_LEN_LEN;
 
     // Copy name
-    memcpy(peer_connect_buffer + offset, peer_list->data->name, (int)name_len);
-    offset += (int)name_len;
+    memcpy(peer_connect_buffer + buffer_offset, peer_list->data->name, (int)name_len);
+    buffer_offset += (int)name_len;
 
     // Send connect to all new peers
     // Send data
@@ -301,61 +319,50 @@ void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, B
         if (peer->data->is_new)
         {
             connect_to_new_peer(peer_list, peer->data, &connect_packet,
-                                peer_connect_buffer, offset, use_sctp, peer_fds, max_fd);
+                                peer_connect_buffer, buffer_offset, use_sctp, peer_fds, max_fd);
         }
 
         peer = peer->next;
     }
 }
 
-void handle_enter_req(list_node *peer_list, int sock, int length,
+void handle_enter_req(list_node *peer_list, int sock, char *packet_data_buffer, size_t length,
                       char type, BOOL use_sctp, fd_set *peer_fds, int *max_fd)
 {
-    receive_new_peer(peer_list, sock, type, length);
-    propagate_new_peer(peer_list, sock);
+    parse_new_peers(peer_list, sock, packet_data_buffer, type, length);
+    propagate_new_peers(peer_list, sock);
     connect_to_new_peers(peer_list, peer_fds, max_fd, use_sctp);
 }
 
-void handle_connect(list_node *peer_list, int sock)
+void handle_connect(list_node *peer_list, int sock, char *packet_data_buffer, size_t length)
 {
-    char entry_header_buf[ENTRY_HEADER_LEN];
-
     peer *new_peer = malloc(sizeof(peer));
     if (!new_peer)
     {
-        fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.");
+        fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
         exit(-1);
     }
 
-    int offset = 0;
+    int buffer_offset = 0;
 
-    receive_from_socket(sock, entry_header_buf, ENTRY_HEADER_LEN);
+    new_peer->ip_addr = *((uint32_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += IP_ADDR_LEN;
 
-    new_peer->ip_addr = *((uint32_t *)(entry_header_buf + offset));
-    offset += IP_ADDR_LEN;
+    new_peer->port = *((uint16_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += PORT_LEN;
 
-    new_peer->port = *((uint16_t *)(entry_header_buf + offset));
-    offset += PORT_LEN;
-
-    int name_length = *((uint16_t *)(entry_header_buf + offset));
-    offset += NAME_LEN_LEN;
+    int name_length = *((uint16_t *)(packet_data_buffer + buffer_offset));
+    buffer_offset += NAME_LEN_LEN;
 
     // Receive name
     new_peer->name = malloc(name_length + 1);
     if (!new_peer->name)
     {
-        fprintf(stderr, "ERROR: Could not allocate memory for new peers name, exiting.");
+        fprintf(stderr, "ERROR: Could not allocate memory for new peers name, exiting.\n");
         exit(-1);
     }
 
-    bzero(new_peer->name, name_length + 1);
-
-    char name_buf[name_length + 1];
-    bzero(name_buf, name_length + 1);
-
-    receive_from_socket(sock, name_buf, name_length);
-
-    strcpy(new_peer->name, name_buf);
+    memcpy (new_peer->name, packet_data_buffer + buffer_offset, name_length);
 
     new_peer->sock = sock;
     new_peer->connected = 1;
@@ -382,18 +389,14 @@ void remove_peer_by_socket(list_node *peer_list, int sock)
     }
 }
 
-void handle_message(list_node *peer_list, int sock, size_t packet_length, BOOL is_private)
+void handle_message(list_node *peer_list, int sock, char *packet_data_buffer, BOOL is_private)
 {
-    char data_buffer[packet_length];
-
-    receive_from_socket(sock, data_buffer, packet_length);
-
     list_node *peer = peer_list;
     while (peer)
     {
         if (peer->data->sock == sock)
         {
-            print_message(peer->data, data_buffer, is_private);
+            print_message(peer->data, packet_data_buffer, is_private);
         }
 
         peer = peer->next;
@@ -412,12 +415,9 @@ void handle_disconnect(list_node *peer_list, int sock, fd_set *peer_fds)
     sock = -1;
 }
 
-void handle_failed(list_node *peer_list, int sock, fd_set *peer_fds)
+void handle_failed(list_node *peer_list, int sock, char *packet_data_buffer, fd_set *peer_fds)
 {
-    char data_buffer[sizeof(int32_t)];
-
-    receive_from_socket(sock, data_buffer, sizeof(int32_t));
-    printf("Failed received with code: %d\n", (int)*data_buffer);
+    printf("Failed received with code: %d\n", *((int32_t*)packet_data_buffer));
 
     FD_CLR(sock, peer_fds); // remove from master set
     close(sock);
@@ -447,34 +447,31 @@ void handle_heartbeat(list_node *peer_list, int sock, BOOL use_sctp)
     }
 }
 
-void parse_packet(list_node *peer_list, int sock, char *header_buf, BOOL use_sctp,
-                  fd_set *peer_fds, int *max_fd)
+void parse_packet(list_node *peer_list, int sock, packet *incoming_packet, char *packet_data_buffer,
+                  BOOL use_sctp, fd_set *peer_fds, int *max_fd)
 {
-    // Data received from client
-    packet incoming_packet;
-    memcpy(&incoming_packet, header_buf, HEADER_LEN);
-
-    switch (incoming_packet.type)
+    switch (incoming_packet->type)
     {
     case MSG_NEW_USERS:
     case MSG_ENTER_REQ:
-        handle_enter_req(peer_list, sock, incoming_packet.length, incoming_packet.type,
-                         use_sctp, peer_fds, max_fd);
+        handle_enter_req(peer_list, sock, packet_data_buffer, incoming_packet->length,
+                         incoming_packet->type, use_sctp, peer_fds, max_fd);
         break;
     case MSG_FAILED:
-        handle_failed(peer_list, sock, peer_fds);
+        handle_failed(peer_list, sock, packet_data_buffer, peer_fds);
         break;
     case MSG_CONNECT:
-        handle_connect(peer_list, sock);
+        handle_connect(peer_list, sock, packet_data_buffer, incoming_packet->length);
         break;
     case MSG_DISCONNECT:
         handle_disconnect(peer_list, sock, peer_fds);
         break;
     case MSG_MESSAGE:
-        handle_message(peer_list, sock, incoming_packet.length, FALSE);
+        // TODO: Check length of message
+        handle_message(peer_list, sock, packet_data_buffer, FALSE);
         break;
     case MSG_PRIVATE:
-        handle_message(peer_list, sock, incoming_packet.length, TRUE);
+        handle_message(peer_list, sock, packet_data_buffer, TRUE);
         break;
     case MSG_HEARTBEAT:
         handle_heartbeat(peer_list, sock, use_sctp);
@@ -488,23 +485,11 @@ void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
-    int nbytes;
-    char header_buf[HEADER_LEN];
+    char header_buffer[HEADER_LEN];
 
-    // Handle data from client
-    if ((nbytes = recv(sock, header_buf, HEADER_LEN, 0)) <= 0)
+    // Read header of packet
+    if (receive_from_socket(sock, header_buffer, HEADER_LEN) <= 0)
     {
-        // If there's an error, the connection is reset
-        if (nbytes == 0)
-        {
-            // Connection is closed
-            printf("INFO: Socket %d hung up\n", sock);
-        }
-        else
-        {
-            fprintf(stderr, "ERROR: Error in recv()\n");
-        }
-
         // Remove client from list if error in connection has occured
         list_node *peer = ctx->peer_list->next;
         while (peer)
@@ -523,7 +508,14 @@ void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp)
     }
     else
     {
-        parse_packet(ctx->peer_list, sock, header_buf, ctx->use_sctp,
+        packet incoming_packet;
+        memcpy(&incoming_packet, header_buffer, HEADER_LEN);
+
+        // Read data section of packet
+        char *packet_data_buffer = malloc(incoming_packet.length);
+        receive_from_socket(sock, packet_data_buffer, incoming_packet.length);
+
+        parse_packet(ctx->peer_list, sock, &incoming_packet, packet_data_buffer, ctx->use_sctp,
                      &ctx->peer_fds, &ctx->max_fd);
     }
 

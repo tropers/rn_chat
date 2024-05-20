@@ -64,7 +64,7 @@ int setup_listener(chat_application_context *ctx, BOOL use_sctp, int sctp_hbinte
     int listener_fd = socket(AF_INET, SOCK_STREAM, use_sctp ? IPPROTO_SCTP : IPPROTO_TCP);
     if (listener_fd < 0)
     {
-        fprintf(stderr, "ERROR: Coulnd't create socket.\n");
+        fprintf(stderr, "ERROR: Couldn't create socket.\n");
         return -1;
     }
 
@@ -118,6 +118,11 @@ void *receiver_thread_func(void *args)
 
     int listener_fd = setup_listener(ctx, ctx->use_sctp, thread_args.sctp_hbinterval);
     // TODO: Error handling
+    if (listener_fd <= 0)
+    {
+        fprintf(stderr, "ERROR: Listener could not be initialized, exiting.\n");
+        exit(-1);
+    }
 
     struct timeval timeout = {0, 50000};
 

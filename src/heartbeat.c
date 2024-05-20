@@ -35,8 +35,7 @@ void send_heartbeat(list_node *peer)
     packet heartbeat = create_packet(
         PROTOCOL_VERSION,
         MSG_HEARTBEAT,
-        0,
-        NULL);
+        0);
 
     if (peer->data->connected)
     {

@@ -34,8 +34,7 @@ void send_disconnect(chat_application_context *ctx)
     packet reset = create_packet(
         PROTOCOL_VERSION,
         MSG_DISCONNECT,
-        0,
-        NULL);
+        0);
 
     list_node* peer = ctx->peer_list;
     while(peer != NULL)
@@ -81,8 +80,7 @@ void send_message(chat_application_context *ctx, char *message,
     packet message_packet = create_packet(
         PROTOCOL_VERSION,
         MSG_MESSAGE,
-        aligned_length, // Length in 4 byte blocks
-        NULL);
+        aligned_length); // Length in 4 byte blocks
 
     // Skip ourselves to send package only to other clients
     list_node *peer = ctx->peer_list->next;
@@ -149,10 +147,9 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
     packet enter_req = create_packet(
         PROTOCOL_VERSION,
         MSG_ENTER_REQ,
-        list_size_safe(peer_mutex, peer_list),
-        req.data);
+        req.length);
 
-    send_data_packet(sockfd, &enter_req, enter_req.data, req.length);
+    send_data_packet(sockfd, &enter_req, req.data, req.length);
 
     // Free data from enter request
     free(req.data);
@@ -214,7 +211,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     ctx.peer_list = list_new();
     if (!ctx.peer_list)
     {
-        fprintf(stderr, "ERROR: Could not initialize peer-list, exiting.");
+        fprintf(stderr, "ERROR: Could not initialize peer-list, exiting.\n");
         exit(-1);
     }
 
@@ -226,7 +223,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     peer *user = malloc(sizeof(peer));
     if (!user)
     {
-        fprintf(stderr, "ERROR: Could allocate memory for local user, exiting.");
+        fprintf(stderr, "ERROR: Could allocate memory for local user, exiting.\n");
         exit(-1);
     }
 
@@ -273,7 +270,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
 
         char *splitstr = strtok(buffer, " ");
 
-        if (strcmp(splitstr, "/connect") == 0)
+        if (!strcmp(splitstr, "/connect"))
         {
             // ip address
             splitstr = strtok(NULL, " ");
@@ -300,17 +297,17 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
                 printf("Connected!\n");
             }
         }
-        else if (strcmp(splitstr, "/list") == 0 || strcmp(splitstr, "/list\n") == 0)
+        else if (!strcmp(splitstr, "/list") || !strcmp(splitstr, "/list\n"))
         {
             show_peer_list(&ctx);
         }
-        else if (strcmp(splitstr, "/quit") == 0 || strcmp(splitstr, "/quit\n") == 0)
+        else if (!strcmp(splitstr, "/quit") || !strcmp(splitstr, "/quit\n"))
         {
             send_disconnect(&ctx);
             list_free_safe(ctx.peer_mutex, ctx.peer_list);
             return;
         }
-        else if (strcmp(splitstr, "/msg") == 0)
+        else if (!strcmp(splitstr, "/msg"))
         {
             // username for private message
             splitstr = strtok(NULL, " ");
