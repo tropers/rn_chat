@@ -26,13 +26,13 @@ void *get_in_addr(struct sockaddr *sa)
 
 void handle_new_connection(chat_application_context *ctx, int listener_fd)
 {
-    struct sockaddr_storage remoteaddr; // Client Address
-    socklen_t addrlen;
-    char remoteIP[INET6_ADDRSTRLEN];
+    struct sockaddr_storage remote_address; // Client Address
+    socklen_t address_length;
+    char remote_ip[INET6_ADDRSTRLEN];
 
     // Handle connections
-    addrlen = sizeof(remoteaddr);
-    int new_sock = accept(listener_fd, (struct sockaddr *)&remoteaddr, &addrlen);
+    address_length = sizeof(remote_address);
+    int new_sock = accept(listener_fd, (struct sockaddr *)&remote_address, &address_length);
 
     if (new_sock == -1)
     {
@@ -44,14 +44,15 @@ void handle_new_connection(chat_application_context *ctx, int listener_fd)
         FD_SET(new_sock, &ctx->peer_fds); // Add to master set
 
         if (new_sock > ctx->max_fd)
-        { // Check if new socket is bigger than maximum socket
+        {
+            // Check if new socket is bigger than maximum socket
             ctx->max_fd = new_sock;
         }
 
         printf("INFO: New connection from %s on socket %d\n",
-               inet_ntop(remoteaddr.ss_family,
-                         get_in_addr((struct sockaddr *)&remoteaddr),
-                         remoteIP, INET6_ADDRSTRLEN),
+               inet_ntop(remote_address.ss_family,
+                         get_in_addr((struct sockaddr *)&remote_address),
+                         remote_ip, INET6_ADDRSTRLEN),
                new_sock);
     }
 }
@@ -112,9 +113,10 @@ void *receiver_thread_func(void *args)
 {
     receiver_thread_args thread_args = *((receiver_thread_args *)args);
     chat_application_context *ctx = thread_args.ctx;
+    fd_set read_fds;
 
     FD_ZERO(&ctx->peer_fds);
-    FD_ZERO(&ctx->read_fds);
+    FD_ZERO(&read_fds);
 
     int listener_fd = setup_listener(ctx, ctx->use_sctp, thread_args.sctp_hbinterval);
     if (listener_fd <= 0)
@@ -127,8 +129,8 @@ void *receiver_thread_func(void *args)
 
     while (TRUE)
     {
-        ctx->read_fds = ctx->peer_fds; // Copy
-        int rv_select = select(ctx->max_fd + 1, &ctx->read_fds, NULL, NULL, &timeout);
+        read_fds = ctx->peer_fds;
+        int rv_select = select(ctx->max_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (rv_select == 0)
         {
             // Timeout, continue
@@ -143,18 +145,18 @@ void *receiver_thread_func(void *args)
         }
 
         // Check current connections for data to be read
-        for (int i = 0; i <= ctx->max_fd; i++)
+        for (int fd = 0; fd <= ctx->max_fd; fd++)
         {
-            if (FD_ISSET(i, &ctx->read_fds))
+            if (FD_ISSET(fd, &read_fds))
             {
-                if (i == listener_fd)
+                if (fd == listener_fd)
                 {
                     handle_new_connection(ctx, listener_fd);
                 }
                 else
                 {
                     // Receive and handle message
-                    recv_packet(ctx, i);
+                    recv_packet(ctx, fd);
                 }
             }
         }

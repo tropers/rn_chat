@@ -28,6 +28,19 @@ typedef struct
 
 typedef struct
 {
+    list_node *peer_list;
+    int sock;
+} peer_list_sock_tuple;
+
+typedef struct
+{
+    fd_set *peer_fds;
+    int *max_fd;
+} peer_and_max_fds_tuple;
+
+
+typedef struct
+{
     char version;
     char type;
     size_t length;

@@ -23,7 +23,6 @@ typedef struct
     char user_name[INPUT_BUFFER_LEN];
 
     fd_set peer_fds;
-    fd_set read_fds;
     int max_fd;
 } chat_application_context;
 
