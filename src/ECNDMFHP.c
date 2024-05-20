@@ -9,10 +9,10 @@
 #include "ECNDMFHP.h"
 #include "helper.h"
 
-packet create_packet(char version, char type, short length)
+packet create_packet(char type, short length)
 {
     return (packet){
-        .version = version,
+        .version = PROTOCOL_VERSION,
         .type = type,
         .length = length};
 }
@@ -83,9 +83,7 @@ enter_request create_enter_req_data(list_node *peer_list)
 void send_failed(int sock)
 {
     // Create failed packet
-    packet failed = create_packet(
-        PROTOCOL_VERSION,
-        MSG_FAILED, 1); // 1 single byte for the error code
+    packet failed = create_packet(MSG_FAILED, 1); // 1 single byte for the error code
 
     send_packet(sock, &failed);
 }
@@ -213,10 +211,7 @@ void propagate_new_peers(list_node *peer_list, int sock)
 {
     enter_request req = create_enter_req_data(peer_list);
 
-    packet new_user = create_packet(
-        PROTOCOL_VERSION,
-        MSG_NEW_USERS,
-        req.length);
+    packet new_user = create_packet(MSG_NEW_USERS, req.length);
 
     // Send recently added users to older users in list and set newUsers = oldusers
     list_node *peer = peer_list->next;
@@ -284,10 +279,7 @@ void connect_to_new_peer(list_node *peer_list, peer *peer, packet *connect_packe
 
 void connect_to_new_peers(list_node *peer_list, fd_set *peer_fds, int *max_fd, BOOL use_sctp)
 {
-    packet connect_packet = create_packet(
-        PROTOCOL_VERSION,
-        MSG_CONNECT,
-        0);
+    packet connect_packet = create_packet(MSG_CONNECT, 0);
 
     char peer_connect_buffer[INPUT_BUFFER_LEN];
 
@@ -481,7 +473,7 @@ void parse_packet(list_node *peer_list, int sock, packet *incoming_packet, char 
     }
 }
 
-void recv_packet(chat_application_context *ctx, int sock, BOOL use_sctp)
+void recv_packet(chat_application_context *ctx, int sock)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 

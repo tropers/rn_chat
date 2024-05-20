@@ -31,10 +31,7 @@ void send_disconnect(chat_application_context *ctx)
     pthread_mutex_lock(ctx->peer_mutex);
 
     // Create disconnect packet
-    packet reset = create_packet(
-        PROTOCOL_VERSION,
-        MSG_DISCONNECT,
-        0);
+    packet reset = create_packet(MSG_DISCONNECT, 0);
 
     list_node* peer = ctx->peer_list;
     while(peer != NULL)
@@ -77,10 +74,7 @@ void send_message(chat_application_context *ctx, char *message,
     }
 
     // Create message packet
-    packet message_packet = create_packet(
-        PROTOCOL_VERSION,
-        MSG_MESSAGE,
-        aligned_length); // Length in 4 byte blocks
+    packet message_packet = create_packet(MSG_MESSAGE, aligned_length); // Length in 4 byte blocks
 
     // Skip ourselves to send package only to other clients
     list_node *peer = ctx->peer_list->next;
@@ -144,10 +138,7 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
     // Add socket ot master set
     FD_SET(sockfd, peer_fds);
 
-    packet enter_req = create_packet(
-        PROTOCOL_VERSION,
-        MSG_ENTER_REQ,
-        req.length);
+    packet enter_req = create_packet(MSG_ENTER_REQ, req.length);
 
     send_data_packet(sockfd, &enter_req, req.data, req.length);
 

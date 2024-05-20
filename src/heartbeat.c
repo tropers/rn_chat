@@ -32,10 +32,7 @@ void remove_peer(chat_application_context *ctx, list_node *peer)
 void send_heartbeat(list_node *peer)
 {
     // Create heartbeat packet
-    packet heartbeat = create_packet(
-        PROTOCOL_VERSION,
-        MSG_HEARTBEAT,
-        0);
+    packet heartbeat = create_packet(MSG_HEARTBEAT, 0);
 
     if (peer->data->connected)
     {

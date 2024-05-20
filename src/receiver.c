@@ -117,7 +117,6 @@ void *receiver_thread_func(void *args)
     FD_ZERO(&ctx->read_fds);
 
     int listener_fd = setup_listener(ctx, ctx->use_sctp, thread_args.sctp_hbinterval);
-    // TODO: Error handling
     if (listener_fd <= 0)
     {
         fprintf(stderr, "ERROR: Listener could not be initialized, exiting.\n");
@@ -155,7 +154,7 @@ void *receiver_thread_func(void *args)
                 else
                 {
                     // Receive and handle message
-                    recv_packet(ctx, i, ctx->use_sctp);
+                    recv_packet(ctx, i);
                 }
             }
         }
