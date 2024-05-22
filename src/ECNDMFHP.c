@@ -174,6 +174,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
     bzero(new_peer->name, name_length + 1);
 
     memcpy(new_peer->name, packet_data_buffer->data + buffer_offset, name_length);
+    buffer_offset += name_length;
 
     return (peer_tuple){
         .peer = new_peer,
@@ -241,7 +242,7 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
     size_t peer_buffer_offset = 0;
     int new_peer_index = 0;
 
-    while (peer_buffer_offset < packet_data_buffer->length)
+    while (peer_buffer_offset <= packet_data_buffer->length)
     {
         peer_tuple new_peer = deserialize_peer_data(
             &(data_buffer){
@@ -272,7 +273,7 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
 
         // TODO: What does this do?
         // We know the socket from the connecting peer
-        if (new_peer_index == 0 && type != MSG_NEW_USERS)
+        if (new_peer_index == 0 && type == MSG_NEW_USERS)
         {
             new_peer.peer->sock = peer_list_and_socket.sock;
         }
@@ -437,11 +438,11 @@ void handle_disconnect(peer_list_sock_tuple peer_list_and_socket, fd_set *peer_f
 {
     printf("INFO: Disconnect received.\n");
 
-    remove_peer_by_socket(peer_list_and_socket);
-
     // TODO: max_fd entsprechend anpassen
     FD_CLR(peer_list_and_socket.sock, peer_fds); // remove from master set
     close(peer_list_and_socket.sock);
+    remove_peer_by_socket(peer_list_and_socket);
+
     peer_list_and_socket.sock = -1;
 }
 
