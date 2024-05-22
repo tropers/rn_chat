@@ -3,7 +3,7 @@
 
 #include "chat.h"
 
-/* Protocol definitions */
+// Protocol definitions
 #define PROTOCOL_VERSION 2
 #define MSG_ENTER_REQ 'E'
 #define MSG_NEW_USERS 'N'
@@ -14,11 +14,24 @@
 #define MSG_PRIVATE 'P'
 #define MSG_FAILED 'F'
 
-typedef struct
-{
-    char *data;
-    size_t length;
-} data_buffer;
+#define IP_ADDR_LEN 4                                            // 4 bytes IP length
+#define PORT_LEN 2                                               // 2 bytes port length
+#define NAME_LEN_LEN 2                                           // 2 bytes name length
+#define ENTRY_HEADER_LEN (IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN) // 8 bytes total length of entry header
+
+#define PORTSTRLEN 6 // Five digits + \0 "65535\0"
+
+#define HEARTBEAT_TIME 20
+
+// Header
+// protocol version: 1 byte
+// packet type:      1 byte
+// packet length:    4 bytes (integer)
+#define HEADER_PROTOCOL_VERSION_LEN 1
+#define HEADER_PACKET_TYPE_LEN 1
+#define HEADER_PACKET_LEN_LEN 4
+#define HEADER_LEN HEADER_PROTOCOL_VERSION_LEN\
+        + HEADER_PACKET_TYPE_LEN + HEADER_PACKET_LEN_LEN
 
 typedef struct
 {
@@ -43,13 +56,20 @@ typedef struct
 {
     char version;
     char type;
-    uint64_t length;
-} packet;
+    uint32_t length;
+} packet_header;
 
-packet create_packet(char type, uint64_t length);
+typedef struct
+{
+    char *data;
+    size_t length;
+} data_buffer;
+
+
+packet_header create_packet_header(char type, uint32_t length);
 data_buffer create_enter_req_data(list_node *peer_list);
-void send_packet(int sock, packet *pack);
-void send_data_packet(int sock, packet *pack, data_buffer *data_buffer);
+void send_packet(int sock, packet_header *pack);
+void send_data_packet(int sock, packet_header *pack, data_buffer *data_buffer);
 void recv_packet(chat_application_context *ctx, int sock);
 
 #endif

@@ -29,7 +29,7 @@ void send_disconnect(chat_application_context *ctx)
     pthread_mutex_lock(ctx->peer_mutex);
 
     // Create disconnect packet
-    packet reset = create_packet(MSG_DISCONNECT, 0);
+    packet_header reset = create_packet_header(MSG_DISCONNECT, 0);
 
     list_node* peer = ctx->peer_list;
     while(peer != NULL)
@@ -72,7 +72,7 @@ void send_message(chat_application_context *ctx, char *message,
     }
 
     // Create message packet
-    packet message_packet = create_packet(MSG_MESSAGE, aligned_length); // Length in 4 byte blocks
+    packet_header message_packet = create_packet_header(MSG_MESSAGE, aligned_length); // Length in 4 byte blocks
     data_buffer message_buffer = {
         .data = message,
         .length = aligned_length
@@ -138,7 +138,7 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
     FD_SET(sockfd, peer_fds);
 
     data_buffer request_buffer = create_enter_req_data(peer_list);
-    packet enter_req = create_packet(MSG_ENTER_REQ, request_buffer.length);
+    packet_header enter_req = create_packet_header(MSG_ENTER_REQ, request_buffer.length);
 
     send_data_packet(sockfd, &enter_req, &request_buffer);
 
