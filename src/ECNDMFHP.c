@@ -534,7 +534,11 @@ void recv_packet(chat_application_context *ctx, int sock)
             fprintf(stderr, "ERROR: Could allocate memory for packet_header data buffer, exiting.\n");
             exit(-1);
         }
-        receive_from_socket(sock, packet_data_buffer.data, incoming_packet->length);
+
+        if (incoming_packet->length > 0)
+        {
+            receive_from_socket(sock, packet_data_buffer.data, incoming_packet->length);
+        }
 
         parse_packet((peer_list_sock_tuple){
                          .peer_list = ctx->peer_list,
