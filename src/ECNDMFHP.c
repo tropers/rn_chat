@@ -361,11 +361,11 @@ void connect_to_new_peer(list_node *peer_list, peer *peer, packet_header connect
 
 void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
 {
-    packet_header connect_packet = create_packet_header(MSG_CONNECT, 0);
-
     // Create data buffer of ourselves
     peer us = *peer_list->data;
     data_buffer peer_connect_buffer = serialize_peer_data(&us);
+    // TODO: Fix connect with 0 length (not parsed correctly at receiving side)
+    packet_header connect_packet = create_packet_header(MSG_CONNECT, peer_connect_buffer.length);
 
     // Send connect to all new peers
     // Send data
