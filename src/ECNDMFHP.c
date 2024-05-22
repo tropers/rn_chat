@@ -242,7 +242,7 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
     size_t peer_buffer_offset = 0;
     int new_peer_index = 0;
 
-    while (peer_buffer_offset <= packet_data_buffer->length)
+    while (peer_buffer_offset < packet_data_buffer->length)
     {
         peer_tuple new_peer = deserialize_peer_data(
             &(data_buffer){
