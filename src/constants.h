@@ -3,7 +3,10 @@
 #define CHAT_VERSION "v0.1"
 #define INPUT_BUFFER_LEN 256
 #define PORT 6969
-#define HEADER_LEN 4
+// protocol version: 1 byte
+// packet type:      1 byte
+// packet length:    8 bytes
+#define HEADER_LEN 10
 
 #define IP_ADDR_LEN 4                                            // 4 bytes IP length
 #define PORT_LEN 2                                               // 2 bytes port length

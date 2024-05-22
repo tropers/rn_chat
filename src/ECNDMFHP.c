@@ -9,7 +9,7 @@
 #include "ECNDMFHP.h"
 #include "helper.h"
 
-packet create_packet(char type, short length)
+packet create_packet(char type, uint64_t length)
 {
     return (packet){
         .version = PROTOCOL_VERSION,
@@ -28,9 +28,32 @@ void send_data_packet(int sock, packet *pack, data_buffer *data_buffer)
     send(sock, data_buffer->data, data_buffer->length, 0);
 }
 
+size_t receive_from_socket(int sock, data_buffer *buffer)
+{
+    size_t bytes_received = 0;
+
+    if ((bytes_received = recv(sock, buffer->data, buffer->length, 0)) <= 0)
+    {
+        // If there's an error, the connection is reset
+        if (bytes_received == 0)
+        {
+            // Connection is closed
+            printf("INFO: Socket %d hung up.\n", sock);
+        }
+        else
+        {
+            fprintf(stderr, "ERROR: Error in recv().\n");
+            close(sock);
+            exit(4);
+        }
+    }
+
+    return bytes_received;
+}
+
 data_buffer serialize_peer_data(peer *peer)
 {
-    int buffer_offset = 0;
+    size_t buffer_offset = 0;
     uint16_t name_length = (uint16_t)strlen(peer->name) + 1; // + 1 for null-terminator
     char *serialized_peer = malloc(sizeof(peer) + name_length);
 
@@ -48,7 +71,7 @@ data_buffer serialize_peer_data(peer *peer)
 
     // Copy name
     memcpy(serialized_peer + buffer_offset, peer->name, (int)name_length);
-    buffer_offset += (int)name_length;
+    buffer_offset += name_length;
 
     return (data_buffer){
         .data = serialized_peer,
@@ -57,7 +80,7 @@ data_buffer serialize_peer_data(peer *peer)
 
 peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
 {
-    int buffer_offset = 0;
+    size_t buffer_offset = 0;
     peer *new_peer = malloc(sizeof(peer));
     if (!new_peer)
     {
@@ -71,7 +94,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
     new_peer->port = *((uint16_t *)(packet_data_buffer->data + buffer_offset));
     buffer_offset += PORT_LEN;
 
-    int name_length = *((uint16_t *)(packet_data_buffer->data + buffer_offset));
+    uint16_t name_length = *((uint16_t *)(packet_data_buffer->data + buffer_offset));
     buffer_offset += NAME_LEN_LEN;
 
     new_peer->name = malloc(name_length + 1);
@@ -100,8 +123,8 @@ data_buffer create_enter_req_data(list_node *peer_list)
         exit(-1);
     }
 
-    int total_length = 0;
-    int previous_total_length = 0;
+    size_t total_length = 0;
+    size_t previous_total_length = 0;
 
     // Iterate over peers
     list_node *peer = peer_list;
@@ -146,37 +169,19 @@ void print_message(peer *peer, char *data_buffer, BOOL is_private)
     fflush(stdout);
 }
 
-int receive_from_socket(int sock, data_buffer *buffer)
-{
-    int bytes_received = 0;
-
-    if ((bytes_received = recv(sock, buffer->data, buffer->length, 0)) <= 0)
-    {
-        // If there's an error, the connection is reset
-        if (bytes_received == 0)
-        {
-            // Connection is closed
-            printf("INFO: Socket %d hung up.\n", sock);
-        }
-        else
-        {
-            fprintf(stderr, "ERROR: Error in recv().\n");
-            close(sock);
-            exit(4);
-        }
-    }
-
-    return bytes_received;
-}
-
 void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer, char type)
 {
-    int peer_buffer_offset = 0;
+    size_t peer_buffer_offset = 0;
     int new_peer_index = 0;
 
-    while (peer_buffer_offset <= packet_data_buffer->length)
+    while (peer_buffer_offset < packet_data_buffer->length)
     {
-        peer_tuple new_peer = deserialize_peer_data(packet_data_buffer + peer_buffer_offset);
+        peer_tuple new_peer = deserialize_peer_data(
+            &(data_buffer){
+                // Add calculated buffer offset to packet data buffer
+                // to iterate through peers in received list.
+                .data = packet_data_buffer->data + peer_buffer_offset,
+                .length = packet_data_buffer->length});
         peer_buffer_offset += new_peer.peer_size;
 
         // Search through list to see if entry already exists
@@ -446,6 +451,10 @@ void recv_packet(chat_application_context *ctx, int sock)
     data_buffer header_buffer = {
         .data = malloc(HEADER_LEN),
         .length = HEADER_LEN};
+    if (!header_buffer.data)
+    {
+        fprintf(stderr, "ERROR: Could not allocate memory for package header, exiting.\n");
+    }
 
     // Read header of packet
     if (receive_from_socket(sock, &header_buffer) == 0)
@@ -475,17 +484,19 @@ void recv_packet(chat_application_context *ctx, int sock)
         data_buffer packet_data_buffer = {
             .data = malloc(incoming_packet.length),
             .length = incoming_packet.length};
+        if (!packet_data_buffer.data)
+        {
+            fprintf(stderr, "ERROR: Could allocate memory for packet data buffer, exiting.\n");
+            exit(-1);
+        }
         receive_from_socket(sock, &packet_data_buffer);
 
         parse_packet((peer_list_sock_tuple){
                          .peer_list = ctx->peer_list,
                          .sock = sock},
-                     &incoming_packet, &packet_data_buffer,
-                     (peer_and_max_fds_tuple){
-                         .peer_fds = &ctx->peer_fds,
-                         .max_fd = &ctx->max_fd},
-                     ctx->use_sctp);
+                     &incoming_packet, &packet_data_buffer, (peer_and_max_fds_tuple){.peer_fds = &ctx->peer_fds, .max_fd = &ctx->max_fd}, ctx->use_sctp);
 
+        free(header_buffer.data);
         free(packet_data_buffer.data);
     }
 

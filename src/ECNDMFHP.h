@@ -43,10 +43,10 @@ typedef struct
 {
     char version;
     char type;
-    size_t length;
+    uint64_t length;
 } packet;
 
-packet create_packet(char type, short length);
+packet create_packet(char type, uint64_t length);
 data_buffer create_enter_req_data(list_node *peer_list);
 void send_packet(int sock, packet *pack);
 void send_data_packet(int sock, packet *pack, data_buffer *data_buffer);

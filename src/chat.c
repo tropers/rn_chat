@@ -16,8 +16,6 @@
 #include <netinet/sctp.h>
 #include <string.h>
 #include <sys/select.h>
-#include <errno.h>
-
 #include "ECNDMFHP.h"
 #include "chat.h"
 #include "constants.h"
