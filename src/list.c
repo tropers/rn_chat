@@ -29,8 +29,8 @@ void list_add(list_node **head, peer *data)
         *head = malloc(sizeof(list_node));
         if (!*head)
         {
-            fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory.\n");
-            return;
+            fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory, exiting.\n");
+            exit(-1);
         }
 
         (*head)->next = NULL;
@@ -45,7 +45,7 @@ void list_add(list_node **head, peer *data)
         (*head)->data = data;
         return;
     }
-    
+
     list_node *node = *head;
     while (node)
     {
@@ -60,8 +60,8 @@ void list_add(list_node **head, peer *data)
             node->next = malloc(sizeof(list_node)); // Try to allocate a new element
             if (!node->next)
             {
-                fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory.\n");
-                return;
+                fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory, exiting.\n");
+                exit(-1);
             }
 
             node->next->next = NULL;
@@ -80,6 +80,24 @@ void list_add_safe(pthread_mutex_t *mutex, list_node **head, peer *data)
     pthread_mutex_unlock(mutex);
 }
 
+void list_remove_item(list_node **head, list_node *node, list_node *prev)
+{
+    // If head is deleted
+    if (node == *head)
+    {
+        list_node *next = (*head)->next;
+        free((*head)->data);
+        free(*head);
+        *head = next;
+        return;
+    }
+
+    prev->next = node->next;
+    free(node->data);
+    free(node);
+    node = NULL;
+}
+
 /* Removes an item from the list */
 void list_remove(list_node **head, uint32_t ip_addr)
 {
@@ -90,20 +108,7 @@ void list_remove(list_node **head, uint32_t ip_addr)
     {
         if (node->data->ip_addr == ip_addr)
         {
-            // If head is deleted
-            if (node == *head)
-            {
-                list_node *next = (*head)->next;
-                free((*head)->data);
-                free(*head);
-                *head = next;
-                break;
-            }
-
-            prev->next = node->next;
-            free(node->data);
-            free(node);
-            node = NULL;
+            list_remove_item(head, node, prev);
             break;
         }
 

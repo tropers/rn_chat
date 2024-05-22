@@ -60,26 +60,34 @@ size_t receive_from_socket(int sock, char *buffer, size_t length)
     return bytes_received;
 }
 
-void remove_peer_and_close_socket(int sock, list_node *peer_list, peer_and_max_fds_tuple *peer_and_max_fds)
+list_node *find_peer_by_socket(peer_list_sock_tuple peer_and_sock)
 {
-    // Remove client from list if error in connection has occured
-    list_node *peer = peer_list->next;
+    list_node *peer = peer_and_sock.peer_list;
     while (peer)
     {
-        if (peer->data->sock == sock)
-        {
-            list_remove(&peer_list, peer->data->ip_addr);
-        }
-
-        peer = peer->next;
+        if (peer->data->sock == peer_and_sock.sock)
+            return peer;
     }
 
-    close(sock);                              // bye!
-    FD_CLR(sock, peer_and_max_fds->peer_fds); // remove from master set
-    sock = -1;
+    return NULL;
 }
 
-packet_header *receive_packet_header(int sock, list_node *peer_list, peer_and_max_fds_tuple *peer_and_max_fds)
+void remove_peer_and_close_socket(peer_list_sock_tuple peer_and_sock, peer_and_max_fds_tuple *peer_and_max_fds)
+{
+    // Remove client from list if error in connection has occured
+    // TODO: Test if "peer_list->next" is really needed
+    list_node *peer = find_peer_by_socket((peer_list_sock_tuple){
+        .peer_list = peer_and_sock.peer_list->next, peer_and_sock.sock});
+    if (peer)
+    {
+        list_remove(&peer_and_sock.peer_list, peer->data->ip_addr);
+        close(peer_and_sock.sock);                              // bye!
+        FD_CLR(peer_and_sock.sock, peer_and_max_fds->peer_fds); // remove from master set
+        peer_and_sock.sock = -1;
+    }
+}
+
+packet_header *receive_packet_header(peer_list_sock_tuple peer_and_sock, peer_and_max_fds_tuple *peer_and_max_fds)
 {
     size_t bytes_received = 0;
     packet_header *packet_header = malloc(sizeof(packet_header));
@@ -90,26 +98,26 @@ packet_header *receive_packet_header(int sock, list_node *peer_list, peer_and_ma
     }
 
     // Read protocol version & packet_header type
-    bytes_received = receive_from_socket(sock, &packet_header->version, HEADER_PROTOCOL_VERSION_LEN);
+    bytes_received = receive_from_socket(peer_and_sock.sock, &packet_header->version, HEADER_PROTOCOL_VERSION_LEN);
     if (bytes_received == 0)
     {
-        remove_peer_and_close_socket(sock, peer_list, peer_and_max_fds);
+        remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
         return NULL;
     }
 
-    bytes_received = receive_from_socket(sock, &packet_header->type, HEADER_PACKET_TYPE_LEN);
+    bytes_received = receive_from_socket(peer_and_sock.sock, &packet_header->type, HEADER_PACKET_TYPE_LEN);
     if (bytes_received == 0)
     {
-        remove_peer_and_close_socket(sock, peer_list, peer_and_max_fds);
+        remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
         return NULL;
     }
 
     // Read integer for packet_header length
     uint32_t packet_length_buffer;
-    bytes_received = receive_from_socket(sock, (char *)&packet_length_buffer, HEADER_PACKET_LEN_LEN);
+    bytes_received = receive_from_socket(peer_and_sock.sock, (char *)&packet_length_buffer, HEADER_PACKET_LEN_LEN);
     if (bytes_received == 0)
     {
-        remove_peer_and_close_socket(sock, peer_list, peer_and_max_fds);
+        remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
         return NULL;
     }
 
@@ -237,7 +245,7 @@ void print_message(peer *peer, char *data_buffer, BOOL is_private)
     fflush(stdout);
 }
 
-void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer, char type)
+void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, char type)
 {
     size_t peer_buffer_offset = 0;
     int new_peer_index = 0;
@@ -253,13 +261,13 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
         peer_buffer_offset += new_peer.peer_size;
 
         // Search through list to see if entry already exists
-        list_node *peer = peer_list_and_socket.peer_list;
+        list_node *peer = peer_and_sock.peer_list;
         while (peer)
         {
             if (!strcmp(peer->data->name, new_peer.peer->name))
             {
                 printf("INFO: Name taken!\n");
-                send_failed(peer_list_and_socket.sock);
+                send_failed(peer_and_sock.sock);
                 free(new_peer.peer->name);
                 free(new_peer.peer);
                 return;
@@ -275,7 +283,7 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
         // We know the socket from the connecting peer
         if (new_peer_index == 0 && type == MSG_NEW_USERS)
         {
-            new_peer.peer->sock = peer_list_and_socket.sock;
+            new_peer.peer->sock = peer_and_sock.sock;
         }
         else
         {
@@ -285,23 +293,23 @@ void parse_new_peers(peer_list_sock_tuple peer_list_and_socket, data_buffer *pac
         new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
         printf("INFO: %s joined the chat.\n", new_peer.peer->name);
-        list_add(&peer_list_and_socket.peer_list, new_peer.peer);
+        list_add(&peer_and_sock.peer_list, new_peer.peer);
 
         new_peer_index++;
     }
 }
 
-void propagate_new_peers(peer_list_sock_tuple peer_list_and_socket)
+void propagate_new_peers(peer_list_sock_tuple peer_and_sock)
 {
-    data_buffer request_buffer = create_enter_req_data(peer_list_and_socket.peer_list);
+    data_buffer request_buffer = create_enter_req_data(peer_and_sock.peer_list);
 
     packet_header new_user = create_packet_header(MSG_NEW_USERS, request_buffer.length);
 
     // Send recently added users to older users in list and set newUsers = oldusers
-    list_node *peer = peer_list_and_socket.peer_list->next;
+    list_node *peer = peer_and_sock.peer_list->next;
     while (peer)
     {
-        if (!(peer->data->is_new) && peer->data->sock != peer_list_and_socket.sock)
+        if (!(peer->data->is_new) && peer->data->sock != peer_and_sock.sock)
         {
             send_data_packet(peer->data->sock, &new_user, &request_buffer);
             peer->data->is_new = 0;
@@ -384,48 +392,49 @@ void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_
     free(peer_connect_buffer.data);
 }
 
-void handle_enter_req(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer,
+void handle_enter_req(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer,
                       char type, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
 {
-    parse_new_peers(peer_list_and_socket, packet_data_buffer, type);
-    propagate_new_peers(peer_list_and_socket);
-    connect_to_new_peers(peer_list_and_socket.peer_list, peer_and_max_fds, use_sctp);
+    parse_new_peers(peer_and_sock, packet_data_buffer, type);
+    propagate_new_peers(peer_and_sock);
+    connect_to_new_peers(peer_and_sock.peer_list, peer_and_max_fds, use_sctp);
 }
 
-void handle_connect(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer)
+void handle_connect(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer)
 {
     peer_tuple new_peer = deserialize_peer_data(packet_data_buffer);
 
-    new_peer.peer->sock = peer_list_and_socket.sock;
+    new_peer.peer->sock = peer_and_sock.sock;
     new_peer.peer->connected = 1;
     new_peer.peer->is_new = 0;
     new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
-    list_add(&peer_list_and_socket.peer_list, new_peer.peer);
+    list_add(&peer_and_sock.peer_list, new_peer.peer);
     printf("Connect received.\n");
 }
 
-void remove_peer_by_socket(peer_list_sock_tuple peer_list_and_socket)
+void remove_peer_by_socket(peer_list_sock_tuple peer_and_sock)
 {
-    list_node *peer = peer_list_and_socket.peer_list;
+    list_node *peer = peer_and_sock.peer_list;
     while (peer)
     {
-        if (peer->data->sock == peer_list_and_socket.sock)
+        if (peer->data->sock == peer_and_sock.sock)
         {
             uint32_t peer_ip = peer->data->ip_addr;
-            list_remove(&peer_list_and_socket.peer_list, peer_ip);
+            list_remove(&peer_and_sock.peer_list, peer_ip);
+            break;
         }
 
         peer = peer->next;
     }
 }
 
-void handle_message(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer, BOOL is_private)
+void handle_message(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, BOOL is_private)
 {
-    list_node *peer = peer_list_and_socket.peer_list;
+    list_node *peer = peer_and_sock.peer_list;
     while (peer)
     {
-        if (peer->data->sock == peer_list_and_socket.sock)
+        if (peer->data->sock == peer_and_sock.sock)
         {
             print_message(peer->data, packet_data_buffer->data, is_private);
         }
@@ -434,30 +443,39 @@ void handle_message(peer_list_sock_tuple peer_list_and_socket, data_buffer *pack
     }
 }
 
-void handle_disconnect(peer_list_sock_tuple peer_list_and_socket, fd_set *peer_fds)
+void handle_disconnect(peer_list_sock_tuple peer_and_sock, fd_set *peer_fds)
 {
-    printf("INFO: Disconnect received.\n");
+    list_node *peer = peer_and_sock.peer_list;
+    while (peer)
+    {
+        if (peer->data->sock == peer_and_sock.sock)
+        {
+            printf("INFO: Disconnect received from \"%s\".\n", peer->data->name);
+        }
+
+        peer = peer->next;
+    }
 
     // TODO: max_fd entsprechend anpassen
-    FD_CLR(peer_list_and_socket.sock, peer_fds); // remove from master set
-    close(peer_list_and_socket.sock);
-    remove_peer_by_socket(peer_list_and_socket);
+    FD_CLR(peer_and_sock.sock, peer_fds); // remove from master set
+    close(peer_and_sock.sock);
+    remove_peer_by_socket(peer_and_sock);
 
-    peer_list_and_socket.sock = -1;
+    peer_and_sock.sock = -1;
 }
 
-void handle_failed(peer_list_sock_tuple peer_list_and_socket, data_buffer *packet_data_buffer, fd_set *peer_fds)
+void handle_failed(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, fd_set *peer_fds)
 {
     printf("Failed received with code: %d\n", *((int32_t *)packet_data_buffer->data));
 
-    FD_CLR(peer_list_and_socket.sock, peer_fds); // remove from master set
-    close(peer_list_and_socket.sock);
-    remove_peer_by_socket(peer_list_and_socket);
+    FD_CLR(peer_and_sock.sock, peer_fds); // remove from master set
+    close(peer_and_sock.sock);
+    remove_peer_by_socket(peer_and_sock);
 
-    peer_list_and_socket.sock = -1;
+    peer_and_sock.sock = -1;
 }
 
-void handle_heartbeat(peer_list_sock_tuple peer_list_and_socket, BOOL use_sctp)
+void handle_heartbeat(peer_list_sock_tuple peer_and_sock, BOOL use_sctp)
 {
     // If SCTP is enabled, we don't need the heartbeat
     // since SCTP has its own heartbeat
@@ -465,10 +483,10 @@ void handle_heartbeat(peer_list_sock_tuple peer_list_and_socket, BOOL use_sctp)
         return;
 
     // Reset heartbeat of peer
-    list_node *peer = peer_list_and_socket.peer_list;
+    list_node *peer = peer_and_sock.peer_list;
     while (peer)
     {
-        if (peer->data->sock == peer_list_and_socket.sock)
+        if (peer->data->sock == peer_and_sock.sock)
         {
             // Peer found -> Reset timer
             peer->data->heartbeat_timer = HEARTBEAT_TIME;
@@ -478,34 +496,34 @@ void handle_heartbeat(peer_list_sock_tuple peer_list_and_socket, BOOL use_sctp)
     }
 }
 
-void parse_packet(peer_list_sock_tuple peer_list_and_socket, packet_header *incoming_packet,
+void parse_packet(peer_list_sock_tuple peer_and_sock, packet_header *incoming_packet,
                   data_buffer *packet_data_buffer, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
 {
     switch (incoming_packet->type)
     {
     case MSG_NEW_USERS:
     case MSG_ENTER_REQ:
-        handle_enter_req(peer_list_and_socket, packet_data_buffer,
+        handle_enter_req(peer_and_sock, packet_data_buffer,
                          incoming_packet->type, peer_and_max_fds, use_sctp);
         break;
     case MSG_FAILED:
-        handle_failed(peer_list_and_socket, packet_data_buffer, peer_and_max_fds.peer_fds);
+        handle_failed(peer_and_sock, packet_data_buffer, peer_and_max_fds.peer_fds);
         break;
     case MSG_CONNECT:
-        handle_connect(peer_list_and_socket, packet_data_buffer);
+        handle_connect(peer_and_sock, packet_data_buffer);
         break;
     case MSG_DISCONNECT:
-        handle_disconnect(peer_list_and_socket, peer_and_max_fds.peer_fds);
+        handle_disconnect(peer_and_sock, peer_and_max_fds.peer_fds);
         break;
     case MSG_MESSAGE:
         // TODO: Check length of message
-        handle_message(peer_list_and_socket, packet_data_buffer, FALSE);
+        handle_message(peer_and_sock, packet_data_buffer, FALSE);
         break;
     case MSG_PRIVATE:
-        handle_message(peer_list_and_socket, packet_data_buffer, TRUE);
+        handle_message(peer_and_sock, packet_data_buffer, TRUE);
         break;
     case MSG_HEARTBEAT:
-        handle_heartbeat(peer_list_and_socket, use_sctp);
+        handle_heartbeat(peer_and_sock, use_sctp);
         break;
     default:
         break;
@@ -520,8 +538,13 @@ void recv_packet(chat_application_context *ctx, int sock)
         .peer_fds = &ctx->peer_fds,
         .max_fd = &ctx->max_fd};
 
+    peer_list_sock_tuple peer_and_sock = {
+        .peer_list = ctx->peer_list,
+        .sock = sock
+    };
+
     // Read header of packet_header
-    packet_header *incoming_packet = receive_packet_header(sock, ctx->peer_list, &peer_and_max_fds);
+    packet_header *incoming_packet = receive_packet_header(peer_and_sock, &peer_and_max_fds);
 
     if (incoming_packet)
     {

@@ -192,10 +192,10 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     pthread_t heartbeat_thread;
     pthread_t receiver_thread;
 
-    printf("#################################################\n");
-    printf("#       SUPER AWESOME CHAT CLIENT SOFTWARE      #\n");
-    printf("#                       %s                    #\n", CHAT_VERSION);
-    printf("#################################################\n");
+    printf("##################################################\n");
+    printf("#       SUPER AWESOME CHAT CLIENT SOFTWARE       #\n");
+    printf("#                       %s                     #\n", CHAT_VERSION);
+    printf("##################################################\n");
 
     // Initialize list and mutex
     printf("Initializing peer list...\n");
