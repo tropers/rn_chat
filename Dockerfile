@@ -13,4 +13,6 @@ FROM alpine
 COPY --from=build-env /p2pchat/build/chat /p2pchat/chat
 WORKDIR /p2pchat
 
+RUN apk add --no-cache gdb
+
 CMD ["/p2pchat/chat"]

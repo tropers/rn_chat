@@ -56,8 +56,8 @@ void send_message(chat_application_context *ctx, char *message,
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
-    int message_length = strlen(message) + 1;
-    int aligned_length = message_length;
+    size_t message_length = strlen(message) + 1;
+    size_t aligned_length = message_length;
 
     // Don't send empty messages!
     if (!strcmp(message, "\n"))

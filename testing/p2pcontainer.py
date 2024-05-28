@@ -5,9 +5,9 @@ import docker
 DOCKER_IMAGE = 'p2pchat_test:latest'
 
 class P2PContainer():
-    '''
-    P2PContainer contains all informatio needed for a chat application testing container
-    '''
+    """
+    P2PContainer implements a testing container for the p2p chat application
+    """
     def __init__(self, client: docker.Client, container_name: str, chat_name: str):
         self.__client = client
         self.container_name = container_name
@@ -25,8 +25,6 @@ class P2PContainer():
         self.__chat_name = chat_name
 
     def __del__(self):
-        self.__client.stop(self.__container)
-        self.__client.wait(self.__container)
         self.__client.remove_container(self.__container)
 
     def convert_to_message(self, message_string) -> bytes:
@@ -47,12 +45,14 @@ class P2PContainer():
 
     def start(self):
         self.__client.start(self.__container)
+
         # Sending chat name and local ip address to container to start the chat application
         self.send_to_container(f'{self.__chat_name}\n')
         self.send_to_container(f'{self.get_container_ip()}\n')
 
     def stop(self):
         self.__client.stop(self.__container)
+        self.__client.wait(self.__container)
 
     # Chat commands
     def p2p_connect(self, ip_address: str):
@@ -66,3 +66,4 @@ class P2PContainer():
 
     def p2p_quit(self):
         self.send_to_container('/quit\n')
+        self.stop()
