@@ -91,9 +91,7 @@ list_node *find_peer_by_name(list_node *peer_list, peer *search_peer)
 void remove_peer_and_close_socket(peer_list_sock_tuple peer_and_sock, peer_and_max_fds_tuple *peer_and_max_fds)
 {
     // Remove client from list if error in connection has occured
-    // TODO: Test if "peer_list->next" is really needed
-    list_node *peer = find_peer_by_socket((peer_list_sock_tuple){
-        .peer_list = peer_and_sock.peer_list->next, peer_and_sock.sock});
+    list_node *peer = find_peer_by_socket(peer_and_sock);
     if (peer)
     {
         list_remove(&peer_and_sock.peer_list, peer->data->ip_addr);
@@ -297,7 +295,7 @@ void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_dat
             new_peer.peer->connected = TRUE;
 
             // We know the socket from the first peer when we
-            // are parsing a NEW USERS request
+            // are parsing a entry request
             if (new_peer_index == 0 && type != MSG_NEW_USERS)
             {
                 new_peer.peer->sock = peer_and_sock.sock;

@@ -1,4 +1,8 @@
-#! python3
+#!/usr/bin/env python
+"""
+Main entrypoint.
+"""
+
 import time
 import logging
 from typing import List
@@ -10,6 +14,9 @@ from p2pcontainer import P2PContainer
 logger = logging.getLogger(__name__)
 
 def getlines(container: P2PContainer) -> List[str]:
+    """
+    Parse lines from container and return them in a list.
+    """
     line = getline(container)
     lines: List[str] = []
 
@@ -20,6 +27,9 @@ def getlines(container: P2PContainer) -> List[str]:
     return lines
 
 def getline(container: P2PContainer) -> str:
+    """
+    Read a line from the container socket and parse as string.
+    """
     buffer = ''
 
     try:
@@ -34,10 +44,17 @@ def getline(container: P2PContainer) -> str:
     return buffer
 
 def print_container_output(container: P2PContainer):
+    """
+    Parse all lines retrieved from a container and log them
+    including the containers name.
+    """
     print(*(f'{container.container_name}: {line}'
           for line in getlines(container)), sep='\n')
 
 def log_container_output(container: P2PContainer):
+    """
+    Log the output from the container using the logger.
+    """
     for line in getlines(container):
         logger.info('%s: %s', container.container_name, line)
 
@@ -64,6 +81,10 @@ def test_two_clients_connect(client: docker.Client):
         container.stop()
 
 def main():
+    """
+    Main method.
+    """
+
     logging.basicConfig(level=logging.INFO)
     client = docker.from_env()
 
