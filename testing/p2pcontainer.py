@@ -29,6 +29,7 @@ class P2PContainer():
         self.__chat_name = chat_name
 
     def __del__(self):
+        self.stop()
         self.__client.remove_container(self.__container)
 
     def convert_to_bytes(self, message_string) -> bytes:

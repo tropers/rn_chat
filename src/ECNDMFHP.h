@@ -51,7 +51,6 @@ typedef struct
     int *max_fd;
 } peer_and_max_fds_tuple;
 
-
 typedef struct
 {
     char version;
@@ -64,7 +63,6 @@ typedef struct
     char *data;
     size_t length;
 } data_buffer;
-
 
 packet_header create_packet_header(char type, uint32_t length);
 data_buffer create_enter_req_data(list_node *peer_list);
