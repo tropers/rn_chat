@@ -52,7 +52,7 @@ void list_add(list_node **head, peer *data)
         if (node->data->ip_addr == data->ip_addr)
         {
 
-            fprintf(stderr, "ERROR: Couldn't add to list, user already exists.\n");
+            fprintf(stderr, "WARNING: Couldn't add \"%s\" to list, user already exists.\n", node->data->name);
             return;
         }
         if (!node->next)
@@ -153,7 +153,7 @@ void list_free(list_node *head)
     list_node *current = head;
     list_node *next;
 
-    while (current != NULL)
+    while (current)
     {
         next = current->next;
         free(current->data);

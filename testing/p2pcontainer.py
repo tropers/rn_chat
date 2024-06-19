@@ -26,10 +26,14 @@ class P2PContainer():
             {'stdin': 1, 'stdout': 1, 'stderr': 1, 'stream':1})
         self.__socket._sock.setblocking(False)
 
+        # stdout buffer contains all previously read output from the container
+        self.__stdout_buffer = bytes()
+
         self.__chat_name = chat_name
 
     def __del__(self):
         self.stop()
+        self.__socket._sock.close()
         self.__client.remove_container(self.__container)
 
     def convert_to_bytes(self, message_string) -> bytes:
@@ -48,7 +52,28 @@ class P2PContainer():
         """
         Read from container socket.
         """
-        return os.read(self.__socket.fileno(), read_bytes)
+        read_buffer = os.read(self.__socket.fileno(), read_bytes)
+        self.__stdout_buffer += read_buffer
+
+        return read_buffer
+
+    def get_stdout_buffer(self) -> bytes:
+        """
+        Returns the stdout buffer of the container.
+        """
+        return self.__stdout_buffer
+
+    def get_stdout_utf8(self) -> str:
+        """
+        Returns the stdout buffer as a UTF-8 string.
+        """
+        return self.__stdout_buffer.decode('utf-8')
+
+    def get_container(self):
+        """
+        Returns container.
+        """
+        return self.__container
 
     def get_container_id(self) -> str:
         """
@@ -104,4 +129,3 @@ class P2PContainer():
         Quit chat application and stop container.
         """
         self.send_to_container('/quit\n')
-        self.stop()

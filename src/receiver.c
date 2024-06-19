@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -12,6 +13,7 @@
 #include "ECNDMFHP.h"
 #include "helper.h"
 #include "chat.h"
+#include "debug.h"
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -36,7 +38,7 @@ void handle_new_connection(chat_application_context *ctx, int listener_fd)
 
     if (new_sock == -1)
     {
-        fprintf(stderr, "ERROR: Error in accept()\n");
+        fprintf(stderr, "ERROR: accept returned with %d.\n", new_sock);
         exit(4);
     }
     else
@@ -46,10 +48,12 @@ void handle_new_connection(chat_application_context *ctx, int listener_fd)
         if (new_sock > ctx->max_fd)
         {
             // Check if new socket is bigger than maximum socket
+            DEBUG("New socket fd larger than previous,\n"
+                  "changing max_fd from %d to %d.\n", ctx->max_fd, new_sock);
             ctx->max_fd = new_sock;
         }
 
-        printf("INFO: New connection from %s on socket %d\n",
+        printf("INFO: New connection from %s on socket %d.\n",
                inet_ntop(remote_address.ss_family,
                          get_in_addr((struct sockaddr *)&remote_address),
                          remote_ip, INET6_ADDRSTRLEN),
@@ -57,7 +61,7 @@ void handle_new_connection(chat_application_context *ctx, int listener_fd)
     }
 }
 
-int setup_listener(chat_application_context *ctx, BOOL use_sctp, int sctp_hbinterval)
+int setup_listener(chat_application_context *ctx, bool use_sctp, int sctp_hbinterval)
 {
     struct sockaddr_in serv_addr;
 
@@ -127,12 +131,17 @@ void *receiver_thread_func(void *args)
 
     struct timeval timeout = {0, 50000};
 
-    while (TRUE)
+    while (true)
     {
         read_fds = ctx->peer_fds;
+
+        DEBUG("Checking for new data on sockets.\n");
+
         int rv_select = select(ctx->max_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (rv_select == 0)
         {
+            DEBUG("Select timed out.\n");
+
             // Timeout, continue
             timeout.tv_sec = 0;
             timeout.tv_usec = 50000;
@@ -140,7 +149,7 @@ void *receiver_thread_func(void *args)
         }
         else if (rv_select == -1)
         {
-            fprintf(stderr, "ERROR: select() failed with errno: %d!\n", errno);
+            fprintf(stderr, "ERROR: select failed with errno: %d!\n", errno);
             continue;
         }
 
@@ -149,12 +158,16 @@ void *receiver_thread_func(void *args)
         {
             if (FD_ISSET(fd, &read_fds))
             {
+                DEBUG("New data detected on socket %d.\n", fd);
+
                 if (fd == listener_fd)
                 {
+                    DEBUG("New connection detected on socket %d.\n", fd);
                     handle_new_connection(ctx, listener_fd);
                 }
                 else
                 {
+                    DEBUG("New packet detected on socket %d. Receiving packet...\n", fd);
                     // Receive and handle message
                     recv_packet(ctx, fd);
                 }

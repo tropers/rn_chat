@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -8,6 +9,7 @@
 
 #include "ECNDMFHP.h"
 #include "helper.h"
+#include "debug.h"
 
 packet_header create_packet_header(char type, uint32_t length)
 {
@@ -48,6 +50,7 @@ size_t receive_from_socket(int sock, char *buffer, size_t length)
         {
             // Connection is closed
             printf("INFO: Socket %d hung up.\n", sock);
+            close(sock);
         }
         else
         {
@@ -79,12 +82,20 @@ list_node *find_peer_by_name(list_node *peer_list, peer *search_peer)
     list_node *peer = peer_list;
     while (peer)
     {
+        DEBUG("Comparing peer %s with %s.\n", peer->data->name, search_peer->name);
+
         if (strcmp(peer->data->name, search_peer->name) == 0)
+        {
+            DEBUG("Peer with name %s found. Returning %s.\n",
+                search_peer->name,
+                search_peer->name);
             return peer;
+        }
 
         peer = peer->next;
     }
 
+    DEBUG("No peer with name %s found. Returning NULL.\n", search_peer->name);
     return NULL;
 }
 
@@ -95,7 +106,6 @@ void remove_peer_and_close_socket(peer_list_sock_tuple peer_and_sock, peer_and_m
     if (peer)
     {
         list_remove(&peer_and_sock.peer_list, peer->data->ip_addr);
-        close(peer_and_sock.sock);                              // bye!
         FD_CLR(peer_and_sock.sock, peer_and_max_fds->peer_fds); // remove from master set
         peer_and_sock.sock = -1;
     }
@@ -171,6 +181,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
 {
     size_t buffer_offset = 0;
     peer *new_peer = malloc(sizeof(peer));
+    DEBUG("Allocated new peer at %p.\n", new_peer);
     if (!new_peer)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
@@ -197,6 +208,13 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
 
     memcpy(new_peer->name, packet_data_buffer->data + buffer_offset, name_length);
     buffer_offset += name_length;
+
+    // Default values
+    new_peer->connected = false;
+    new_peer->heartbeat_timer = 0;
+    DEBUG("Setting new_peer %s at %p is_new.\n", new_peer->name, new_peer);
+    new_peer->is_new = true;
+    new_peer->sock = -1;
 
     return (peer_tuple){
         .peer = new_peer,
@@ -238,15 +256,32 @@ data_buffer create_enter_req_data(list_node *peer_list)
         .length = total_length};
 }
 
-void send_failed(int sock)
+void send_failed(int sock, uint32_t code)
 {
     // Create failed packet_header
-    packet_header failed = create_packet_header(MSG_FAILED, 1); // 1 single byte for the error code
+    packet_header failed = create_packet_header(MSG_FAILED, sizeof(uint32_t)); // 1 single byte for the error code
 
-    send_packet(sock, &failed);
+    data_buffer code_buffer = {
+        .data = malloc(sizeof(uint32_t)),
+        .length = sizeof(uint32_t)
+    };
+
+    if (!code_buffer.data)
+    {
+        printf("ERROR: Couldn't allocate memory for failed message. Exiting.\n");
+        exit(-1);
+    }
+
+    // Set error code
+    memcpy(code_buffer.data, (char *)&code, sizeof(code));
+    // *code_buffer.data = htonl(code);
+
+    DEBUG("Sending failed packet to socket %d with code %d.\n", sock, code);
+
+    send_data_packet(sock, &failed, &code_buffer);
 }
 
-void print_message(peer *peer, char *data_buffer, BOOL is_private)
+void print_message(peer *peer, char *data_buffer, bool is_private)
 {
     // Remove newline
     chomp(data_buffer);
@@ -276,35 +311,28 @@ void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_dat
 
         // Search through list to see if entry already exists
         // for client who sent entry request
-        if (new_peer_index == 0 && type == MSG_ENTER_REQ)
+        if (new_peer_index == 0
+            && type == MSG_ENTER_REQ
+            && find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
         {
-            if (find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
-            {
-                printf("INFO: Name \"%s\" taken!\n", new_peer.peer->name);
-                send_failed(peer_and_sock.sock);
-                free(new_peer.peer->name);
-                free(new_peer.peer);
-                return;
-            }
+            printf("INFO: Name \"%s\" taken!\n", new_peer.peer->name);
+            // TODO: Write defines for error codes sent
+            send_failed(peer_and_sock.sock, 1);
+            free(new_peer.peer->name);
+            free(new_peer.peer);
+            return;
         }
 
         // Check if peer already exists, only add non-existing peers
         if (!find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
         {
-            // Initialize new peer
-            new_peer.peer->connected = TRUE;
-
             // We know the socket from the first peer when we
             // are parsing a entry request
             if (new_peer_index == 0 && type != MSG_NEW_USERS)
             {
                 new_peer.peer->sock = peer_and_sock.sock;
+                new_peer.peer->connected = true;
             }
-            else
-            {
-                new_peer.peer->sock = -1; // No socket from other participants known
-            }
-            new_peer.peer->is_new = TRUE;
             new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
             printf("INFO: %s joined the chat.\n", new_peer.peer->name);
@@ -312,6 +340,26 @@ void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_dat
 
             new_peer_index++;
         }
+        else
+        {
+            free(new_peer.peer);
+        }
+
+#ifdef DEBUGGING
+        list_node *peer_print = peer_and_sock.peer_list;
+        while (peer_print)
+        {
+            DEBUG("\nname:      %s\n"
+                  "connected: %d\n"
+                  "is_new:    %d\n",
+                  peer_print->data->name,
+                  peer_print->data->connected,
+                  peer_print->data->is_new);
+
+            peer_print = peer_print->next;
+        }
+        DEBUG("Peer list size: %d.\n", list_size(peer_and_sock.peer_list));
+#endif
     }
 }
 
@@ -325,10 +373,10 @@ void propagate_new_peers(peer_list_sock_tuple peer_and_sock)
     list_node *peer = peer_and_sock.peer_list->next;
     while (peer)
     {
-        if (!(peer->data->is_new) && peer->data->sock != peer_and_sock.sock)
+        if (!peer->data->is_new && peer->data->sock != peer_and_sock.sock)
         {
+            DEBUG("Propagating peers to %s.\n", peer->data->name);
             send_data_packet(peer->data->sock, &new_user, &request_buffer);
-            peer->data->is_new = 0;
         }
 
         peer = peer->next;
@@ -338,7 +386,7 @@ void propagate_new_peers(peer_list_sock_tuple peer_and_sock)
 }
 
 void connect_to_new_peer(list_node *peer_list, peer *peer, packet_header connect_packet,
-                         data_buffer *data_buffer, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
+                         data_buffer *data_buffer, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
     // If not connected to peer yet, open connection
     if (peer->sock < 0)
@@ -369,21 +417,24 @@ void connect_to_new_peer(list_node *peer_list, peer *peer, packet_header connect
 
         // Set socket to client
         peer->sock = sockfd;
+        peer->connected = true;
         // Add socket to master set
         FD_SET(sockfd, peer_and_max_fds.peer_fds);
 
         // Update max socket
         if (sockfd > *peer_and_max_fds.max_fd)
         {
+            DEBUG("New socket fd larger than previous,\n"
+                  "changing max_fd from %d to %d.\n", *peer_and_max_fds.max_fd, sockfd);
             *peer_and_max_fds.max_fd = sockfd;
         }
     }
 
     send_data_packet(peer->sock, &connect_packet, data_buffer);
-    peer->is_new = 0;
+    peer->is_new = false;
 }
 
-void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
+void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
     // Create data buffer of ourselves
     peer us = *peer_list->data;
@@ -391,7 +442,6 @@ void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_
     packet_header connect_packet = create_packet_header(MSG_CONNECT, peer_connect_buffer.length);
 
     // Send connect to all new peers
-    // Send data
     list_node *peer = peer_list->next;
     while (peer)
     {
@@ -408,10 +458,19 @@ void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_
 }
 
 void handle_enter_req(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer,
-                      char type, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
+                      char type, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
+    if (type == MSG_ENTER_REQ)
+        DEBUG("Handling enter request.\n");
+    else
+        DEBUG("Handling new users.\n");
+
     parse_new_peers(peer_and_sock, packet_data_buffer, type);
-    propagate_new_peers(peer_and_sock);
+
+    // Only propagate new peers on enter request.
+    if (type == MSG_ENTER_REQ)
+        propagate_new_peers(peer_and_sock);
+
     connect_to_new_peers(peer_and_sock.peer_list, peer_and_max_fds, use_sctp);
 }
 
@@ -420,12 +479,15 @@ void handle_connect(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data
     peer_tuple new_peer = deserialize_peer_data(packet_data_buffer);
 
     new_peer.peer->sock = peer_and_sock.sock;
-    new_peer.peer->connected = 1;
-    new_peer.peer->is_new = 0;
+    new_peer.peer->connected = true;
+    new_peer.peer->is_new = false;
     new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
-    list_add(&peer_and_sock.peer_list, new_peer.peer);
-    printf("INFO: %s joined the chat.\n", new_peer.peer->name);
+    if (!find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
+    {
+        list_add(&peer_and_sock.peer_list, new_peer.peer);
+        printf("INFO: %s joined the chat.\n", new_peer.peer->name);
+    }
 }
 
 void remove_peer_by_socket(peer_list_sock_tuple peer_and_sock)
@@ -444,7 +506,7 @@ void remove_peer_by_socket(peer_list_sock_tuple peer_and_sock)
     }
 }
 
-void handle_message(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, BOOL is_private)
+void handle_message(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, bool is_private)
 {
     list_node *peer = peer_and_sock.peer_list;
     while (peer)
@@ -460,38 +522,34 @@ void handle_message(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data
 
 void handle_disconnect(peer_list_sock_tuple peer_and_sock, fd_set *peer_fds)
 {
-    list_node *peer = peer_and_sock.peer_list;
-    while (peer)
+    list_node *peer = find_peer_by_socket(peer_and_sock);
+    if (peer)
     {
-        if (peer->data->sock == peer_and_sock.sock)
-        {
-            printf("INFO: Disconnect received from \"%s\".\n", peer->data->name);
+        printf("INFO: Disconnect received from \"%s\".\n", peer->data->name);
 
-            // TODO: max_fd entsprechend anpassen
-            FD_CLR(peer_and_sock.sock, peer_fds); // remove from master set
-            close(peer_and_sock.sock);
-            remove_peer_by_socket(peer_and_sock);
+        // TODO: max_fd entsprechend anpassen
+        FD_CLR(peer_and_sock.sock, peer_fds); // remove from master set
+        remove_peer_by_socket(peer_and_sock);
 
-            peer_and_sock.sock = -1;
-            break;
-        }
-
-        peer = peer->next;
+        peer_and_sock.sock = -1;
+    }
+    else
+    {
+        printf("ERROR: No peer found for socket %d.\n", peer_and_sock.sock);
     }
 }
 
 void handle_failed(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, fd_set *peer_fds)
 {
-    printf("Failed received with code: %d\n", *((int32_t *)packet_data_buffer->data));
+    printf("INFO: Failed received with code: %d\n", *((uint32_t *)packet_data_buffer->data));
 
     FD_CLR(peer_and_sock.sock, peer_fds); // remove from master set
-    close(peer_and_sock.sock);
     remove_peer_by_socket(peer_and_sock);
 
     peer_and_sock.sock = -1;
 }
 
-void handle_heartbeat(peer_list_sock_tuple peer_and_sock, BOOL use_sctp)
+void handle_heartbeat(peer_list_sock_tuple peer_and_sock, bool use_sctp)
 {
     // If SCTP is enabled, we don't need the heartbeat
     // since SCTP has its own heartbeat
@@ -513,7 +571,7 @@ void handle_heartbeat(peer_list_sock_tuple peer_and_sock, BOOL use_sctp)
 }
 
 void parse_packet(peer_list_sock_tuple peer_and_sock, packet_header *incoming_packet,
-                  data_buffer *packet_data_buffer, peer_and_max_fds_tuple peer_and_max_fds, BOOL use_sctp)
+                  data_buffer *packet_data_buffer, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
     switch (incoming_packet->type)
     {
@@ -533,10 +591,10 @@ void parse_packet(peer_list_sock_tuple peer_and_sock, packet_header *incoming_pa
         break;
     case MSG_MESSAGE:
         // TODO: Check length of message
-        handle_message(peer_and_sock, packet_data_buffer, FALSE);
+        handle_message(peer_and_sock, packet_data_buffer, false);
         break;
     case MSG_PRIVATE:
-        handle_message(peer_and_sock, packet_data_buffer, TRUE);
+        handle_message(peer_and_sock, packet_data_buffer, true);
         break;
     case MSG_HEARTBEAT:
         handle_heartbeat(peer_and_sock, use_sctp);
@@ -561,6 +619,11 @@ void recv_packet(chat_application_context *ctx, int sock)
     // Read header of packet_header
     packet_header *incoming_packet = receive_packet_header(peer_and_sock, &peer_and_max_fds);
 
+    DEBUG("Packet header with type %c, length %d bytes and version 0x%02x received.\n", 
+        incoming_packet->type,
+        incoming_packet->length,
+        incoming_packet->version);
+
     if (incoming_packet)
     {
         // Read data section of packet_header
@@ -575,8 +638,12 @@ void recv_packet(chat_application_context *ctx, int sock)
 
         if (incoming_packet->length > 0)
         {
+            DEBUG("Receiving %d bytes packet data from socket %d.\n", incoming_packet->length, sock);
             receive_from_socket(sock, packet_data_buffer.data, incoming_packet->length);
         }
+
+        DEBUG("Parsing packet with type %c and version 0x%02x.\n",
+            incoming_packet->type, incoming_packet->version);
 
         parse_packet((peer_list_sock_tuple){
                          .peer_list = ctx->peer_list,

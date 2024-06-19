@@ -6,6 +6,7 @@
 #ifndef CHAT_H
 #define CHAT_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/select.h>
 
@@ -14,7 +15,7 @@
 
 typedef struct
 {
-    BOOL use_sctp;
+    bool use_sctp;
     int sctp_hbinterval;
 
     pthread_mutex_t *peer_mutex;
@@ -26,6 +27,6 @@ typedef struct
     int max_fd;
 } chat_application_context;
 
-void handle(BOOL use_sctp, int sctp_hbinterval);
+void handle(bool use_sctp, int sctp_hbinterval);
 
 #endif

@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <stdbool.h>
 
 #include "constants.h"
 #include "helper.h"
@@ -13,15 +14,15 @@ void chomp(char *s)
     *s = 0;
 }
 
-BOOL isnumber(char *string)
+bool isnumber(char *string)
 {
-    BOOL is_number = TRUE;
+    bool is_number = true;
 
     for (char *c = string; *c != '\0'; c++)
     {
         if (!isdigit(*c))
         {
-            is_number = FALSE;
+            is_number = false;
             break;
         }
     }
