@@ -169,7 +169,7 @@ void *receiver_thread_func(void *args)
                 {
                     DEBUG("New packet detected on socket %d. Receiving packet...\n", fd);
                     // Receive and handle message
-                    recv_packet(ctx, fd);
+                    handle_packet(ctx, fd);
                 }
             }
         }

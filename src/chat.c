@@ -336,7 +336,7 @@ void handle(bool use_sctp, int sctp_hbinterval)
         }
         else if (splitstr[0] == '/')
         {
-            // Ignore commands (no sending messages by accident) {
+            // Ignore commands (no sending messages by accident)
         }
         else
         {

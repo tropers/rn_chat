@@ -1,6 +1,8 @@
 #ifndef ECNDMFHP_H
 #define ECNDMFHP_H
 
+#include <stdint.h>
+
 #include "chat.h"
 
 // Protocol definitions
@@ -17,7 +19,6 @@
 #define IP_ADDR_LEN 4                                            // 4 bytes IP length
 #define PORT_LEN 2                                               // 2 bytes port length
 #define NAME_LEN_LEN 2                                           // 2 bytes name length
-#define ENTRY_HEADER_LEN (IP_ADDR_LEN + PORT_LEN + NAME_LEN_LEN) // 8 bytes total length of entry header
 
 #define PORTSTRLEN 6 // Five digits + \0 "65535\0"
 
@@ -66,8 +67,8 @@ typedef struct
 
 packet_header create_packet_header(char type, uint32_t length);
 data_buffer create_enter_req_data(list_node *peer_list);
-void send_packet(int sock, packet_header *pack);
-void send_data_packet(int sock, packet_header *pack, data_buffer *data_buffer);
-void recv_packet(chat_application_context *ctx, int sock);
+void send_packet(int sock, packet_header *header);
+void send_data_packet(int sock, packet_header *header, data_buffer *data_buffer);
+void handle_packet(chat_application_context *ctx, int sock);
 
 #endif

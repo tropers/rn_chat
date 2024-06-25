@@ -16,30 +16,33 @@ packet_header create_packet_header(char type, uint32_t length)
     return (packet_header){
         .version = PROTOCOL_VERSION,
         .type = type,
-        .length = length};
+        .length = htonl(length)};
 }
 
-void send_packet_header(int sock, packet_header *header)
-{
-    // Send protocol version and packet_header type
-    send(sock, header, HEADER_PROTOCOL_VERSION_LEN + HEADER_PACKET_TYPE_LEN, 0);
-
-    uint32_t packet_length = htonl(header->length);
-    send(sock, &packet_length, HEADER_PACKET_LEN_LEN, 0);
-}
-
+/**
+ * send_packet is used to send "dataless" packets which are self contained in the packet header.
+ */
 void send_packet(int sock, packet_header *header)
 {
-    send_packet_header(sock, header);
+    DEBUG("Sending header with (0x%02x, %c, 0x%08x)\n", header->version, header->type, header->length);
+    send(sock, header, sizeof(packet_header), 0);
 }
 
+/**
+ * send_data_packet sends a packet consisting of the header and a variable data buffer.
+ */
 void send_data_packet(int sock, packet_header *header, data_buffer *data_buffer)
 {
-    send_packet_header(sock, header);
-    send(sock, data_buffer->data, data_buffer->length, 0);
+    size_t packet_length = sizeof(packet_header) + data_buffer->length;
+    char packet_buffer[packet_length];
+
+    memcpy(packet_buffer, header, sizeof(packet_header));
+    memcpy(packet_buffer + sizeof(packet_header), data_buffer->data, data_buffer->length);
+
+    send(sock, packet_buffer, packet_length, 0);
 }
 
-size_t receive_from_socket(int sock, char *buffer, size_t length)
+size_t receive_from_socket(int sock, void *buffer, size_t length)
 {
     size_t bytes_received = 0;
 
@@ -121,31 +124,15 @@ packet_header *receive_packet_header(peer_list_sock_tuple peer_and_sock, peer_an
         exit(-1);
     }
 
-    // Read protocol version & packet_header type
-    bytes_received = receive_from_socket(peer_and_sock.sock, &packet_header->version, HEADER_PROTOCOL_VERSION_LEN);
+    bytes_received = receive_from_socket(peer_and_sock.sock, packet_header, sizeof(packet_header));
     if (bytes_received == 0)
     {
         remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
         return NULL;
     }
 
-    bytes_received = receive_from_socket(peer_and_sock.sock, &packet_header->type, HEADER_PACKET_TYPE_LEN);
-    if (bytes_received == 0)
-    {
-        remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
-        return NULL;
-    }
-
-    // Read integer for packet_header length
-    uint32_t packet_length_buffer;
-    bytes_received = receive_from_socket(peer_and_sock.sock, (char *)&packet_length_buffer, HEADER_PACKET_LEN_LEN);
-    if (bytes_received == 0)
-    {
-        remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
-        return NULL;
-    }
-
-    packet_header->length = ntohl(packet_length_buffer);
+    packet_header->length = ntohl(packet_header->length);
+    DEBUG("0x%02x, %c, 0x%08x\n", packet_header->version, packet_header->type, packet_header->length);
 
     return packet_header;
 }
@@ -258,8 +245,8 @@ data_buffer create_enter_req_data(list_node *peer_list)
 
 void send_failed(int sock, uint32_t code)
 {
-    // Create failed packet_header
-    packet_header failed = create_packet_header(MSG_FAILED, sizeof(uint32_t)); // 1 single byte for the error code
+    // Create failed packet_header with a single uint32 to encode error code.
+    packet_header failed = create_packet_header(MSG_FAILED, sizeof(uint32_t));
 
     data_buffer code_buffer = {
         .data = malloc(sizeof(uint32_t)),
@@ -274,7 +261,6 @@ void send_failed(int sock, uint32_t code)
 
     // Set error code
     memcpy(code_buffer.data, (char *)&code, sizeof(code));
-    // *code_buffer.data = htonl(code);
 
     DEBUG("Sending failed packet to socket %d with code %d.\n", sock, code);
 
@@ -457,6 +443,10 @@ void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_
     free(peer_connect_buffer.data);
 }
 
+/**
+ * handle_enter_req handles an enter request.
+ * TODO: Write documentation on how the protocol works.
+ */
 void handle_enter_req(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer,
                       char type, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
@@ -604,7 +594,7 @@ void parse_packet(peer_list_sock_tuple peer_and_sock, packet_header *incoming_pa
     }
 }
 
-void recv_packet(chat_application_context *ctx, int sock)
+void handle_packet(chat_application_context *ctx, int sock)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
@@ -630,6 +620,7 @@ void recv_packet(chat_application_context *ctx, int sock)
         data_buffer packet_data_buffer = {
             .data = malloc(incoming_packet->length),
             .length = incoming_packet->length};
+
         if (!packet_data_buffer.data)
         {
             fprintf(stderr, "ERROR: Could allocate memory for packet_header data buffer, exiting.\n");
