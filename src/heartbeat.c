@@ -50,7 +50,7 @@ void *heartbeat_thread_func(void *args)
     base_time = time(0);
     old_time = time(0);
 
-    while (TRUE)
+    while (true)
     {
         sleep(0.5);
 

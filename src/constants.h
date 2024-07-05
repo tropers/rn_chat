@@ -6,7 +6,3 @@
 
 /* SCTP */
 #define MSECS_IN_1SEC 1000
-
-#define BOOL char
-#define TRUE 1
-#define FALSE 0

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "chat.h"
 #include "helper.h"
@@ -23,7 +24,7 @@ void args_sctp(int argc, char **argv)
         if (isnumber(argv[2]))
         {
             printf("Using SCTP with interval: %s.\n", argv[2]);
-            handle(1, atoi(argv[2]));
+            handle(true, atoi(argv[2]));
         }
         else
         {
@@ -50,10 +51,10 @@ int main(int argc, char **argv)
     if (argc <= 1)
     {
         printf("Using TCP.\n");
-        handle(0, 0);
+        handle(false, 0);
         return 0;
     }
-    
+
     if (!strcmp(argv[1], "--sctp"))
     {
         args_sctp(argc, argv);

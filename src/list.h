@@ -2,6 +2,7 @@
 #define LIST_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <pthread.h>
 
 #include "constants.h"
@@ -9,12 +10,12 @@
 // Peer datatype
 typedef struct
 {
+    double heartbeat_timer;
     uint32_t ip_addr;
-    BOOL connected;
     int sock;
     uint16_t port;
-    double heartbeat_timer;
-    BOOL is_new;
+    bool is_new;
+    bool connected;
 
     char *name;
 } peer;

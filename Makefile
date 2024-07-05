@@ -45,6 +45,9 @@ debug: $(BUILD_DIR)/$(TARGET_EXEC)
 clean:
 	$(RM) -r $(BUILD_DIR)
 
+docker:
+	docker image build -t p2pchat_test:latest .
+
 -include $(DEPS)
 
 MKDIR_P ?= mkdir -p

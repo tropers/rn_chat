@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
@@ -16,6 +17,7 @@
 #include <netinet/sctp.h>
 #include <string.h>
 #include <sys/select.h>
+
 #include "ECNDMFHP.h"
 #include "chat.h"
 #include "constants.h"
@@ -23,6 +25,7 @@
 #include "list.h"
 #include "heartbeat.h"
 #include "receiver.h"
+#include "debug.h"
 
 void send_disconnect(chat_application_context *ctx)
 {
@@ -31,8 +34,8 @@ void send_disconnect(chat_application_context *ctx)
     // Create disconnect packet
     packet_header reset = create_packet_header(MSG_DISCONNECT, 0);
 
-    list_node* peer = ctx->peer_list;
-    while(peer != NULL)
+    list_node *peer = ctx->peer_list;
+    while (peer)
     {
         // Send disconnect to everyone
         if (peer->data->connected)
@@ -52,12 +55,12 @@ void send_disconnect(chat_application_context *ctx)
 }
 
 void send_message(chat_application_context *ctx, char *message,
-                  BOOL private, char *user_name)
+                  bool private, char *user_name)
 {
     pthread_mutex_lock(ctx->peer_mutex);
 
-    int message_length = strlen(message) + 1;
-    int aligned_length = message_length;
+    size_t message_length = strlen(message) + 1;
+    size_t aligned_length = message_length;
 
     // Don't send empty messages!
     if (!strcmp(message, "\n"))
@@ -109,7 +112,7 @@ void send_message(chat_application_context *ctx, char *message,
 // Connects to a client / client-network
 int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t destination_ip,
                     uint16_t destination_port, fd_set *peer_fds,
-                    int *max_fd, BOOL use_sctp)
+                    int *max_fd, bool use_sctp)
 {
     // socket-file destriptor
     struct sockaddr_in address;
@@ -125,9 +128,11 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
     address.sin_addr.s_addr = destination_ip;
     address.sin_port = destination_port;
 
+    DEBUG("Trying to connect to %s on port %d.\n", inet_ntoa(address.sin_addr), ntohs(destination_port));
+
     if (connect(sockfd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
-        fprintf(stderr, "ERROR: connect failed.\n");
+        fprintf(stderr, "ERROR: Connect to %s failed.\n", inet_ntoa(address.sin_addr));
         close(sockfd);
         FD_CLR(sockfd, peer_fds);
         sockfd = -1;
@@ -148,6 +153,8 @@ int connect_to_peer(pthread_mutex_t *peer_mutex, list_node *peer_list, uint32_t 
     // Set maximum socket to new socket if new socket is bigger
     if (sockfd > *max_fd)
     {
+        DEBUG("New socket fd larger than previous,\n"
+              "changing max_fd from %d to %d.\n", *max_fd, sockfd);
         *max_fd = sockfd;
     }
 
@@ -178,7 +185,7 @@ void show_peer_list(chat_application_context *ctx)
 }
 
 // Initializes the chat handler and runs in infinite loop
-void handle(BOOL use_sctp, int sctp_hbinterval)
+void handle(bool use_sctp, int sctp_hbinterval)
 {
     char buffer[INPUT_BUFFER_LEN];
 
@@ -229,8 +236,8 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
     inet_pton(AF_INET, buffer, &(user->ip_addr));
     user->name = ctx.user_name;
     user->port = PORT;
-    user->connected = 1;
-    user->is_new = 0;
+    user->connected = true;
+    user->is_new = false;
 
     // Add self to list
     list_add(&ctx.peer_list, user);
@@ -253,8 +260,9 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
         pthread_create(&heartbeat_thread, NULL, heartbeat_thread_func, &args);
     }
 
+
     // Main loop for grabbing keyboard input
-    while (TRUE)
+    while (true)
     {
         printf("> ");
         fgets(buffer, INPUT_BUFFER_LEN, stdin);
@@ -265,7 +273,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
         {
             // ip address
             splitstr = strtok(NULL, " ");
-            if (splitstr == NULL)
+            if (!splitstr)
             {
                 fprintf(stderr, "usage: /connect IP_ADDRESS PORT\n");
                 continue;
@@ -275,7 +283,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
 
             // port
             splitstr = strtok(NULL, " ");
-            if (splitstr == NULL)
+            if (!splitstr)
             {
                 fprintf(stderr, "usage: /connect IP_ADDRESS PORT\n");
                 continue;
@@ -285,7 +293,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
             if (connect_to_peer(ctx.peer_mutex, ctx.peer_list, ip_addr, port,
                                 &ctx.peer_fds, &ctx.max_fd, use_sctp))
             {
-                printf("Connected!\n");
+                printf("INFO: Connected!\n");
             }
         }
         else if (!strcmp(splitstr, "/list") || !strcmp(splitstr, "/list\n"))
@@ -302,7 +310,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
         {
             // username for private message
             splitstr = strtok(NULL, " ");
-            if (splitstr == NULL)
+            if (!splitstr)
             {
                 fprintf(stderr, "usage: /msg USER_NAME MESSAGE\n");
                 continue;
@@ -316,7 +324,7 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
             bzero(message, strlen(buffer));
 
             splitstr = strtok(NULL, " ");
-            while (splitstr != NULL)
+            while (splitstr)
             {
                 strcat(message, splitstr);
                 strcat(message, " ");
@@ -328,14 +336,14 @@ void handle(BOOL use_sctp, int sctp_hbinterval)
         }
         else if (splitstr[0] == '/')
         {
-            // Ignore commands (no sending messages by accident) {
+            // Ignore commands (no sending messages by accident)
         }
         else
         {
             char message[strlen(buffer)];
             memset(&message, 0, strlen(buffer));
 
-            while (splitstr != NULL)
+            while (splitstr)
             {
                 strcat(message, splitstr);
                 strcat(message, " ");
