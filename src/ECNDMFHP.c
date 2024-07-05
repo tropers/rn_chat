@@ -198,7 +198,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
 
     // Default values
     new_peer->connected = false;
-    new_peer->heartbeat_timer = 0;
+    new_peer->heartbeat_timer = HEARTBEAT_TIME;
     DEBUG("Setting new_peer %s at %p is_new.\n", new_peer->name, new_peer);
     new_peer->is_new = true;
     new_peer->sock = -1;
@@ -280,7 +280,7 @@ void print_message(peer *peer, char *data_buffer, bool is_private)
     fflush(stdout);
 }
 
-void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer, char type)
+void parse_enter_req(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer)
 {
     size_t peer_buffer_offset = 0;
     int new_peer_index = 0;
@@ -298,7 +298,6 @@ void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_dat
         // Search through list to see if entry already exists
         // for client who sent entry request
         if (new_peer_index == 0
-            && type == MSG_ENTER_REQ
             && find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
         {
             printf("INFO: Name \"%s\" taken!\n", new_peer.peer->name);
@@ -312,15 +311,59 @@ void parse_new_peers(peer_list_sock_tuple peer_and_sock, data_buffer *packet_dat
         // Check if peer already exists, only add non-existing peers
         if (!find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
         {
-            // We know the socket from the first peer when we
-            // are parsing a entry request
-            if (new_peer_index == 0 && type != MSG_NEW_USERS)
+            // We know the socket from the first peer
+            if (new_peer_index == 0)
             {
                 new_peer.peer->sock = peer_and_sock.sock;
                 new_peer.peer->connected = true;
             }
-            new_peer.peer->heartbeat_timer = HEARTBEAT_TIME;
 
+            printf("INFO: %s joined the chat.\n", new_peer.peer->name);
+            list_add(&peer_and_sock.peer_list, new_peer.peer);
+
+            new_peer_index++;
+        }
+        else
+        {
+            free(new_peer.peer);
+        }
+
+#ifdef DEBUGGING
+        list_node *peer_print = peer_and_sock.peer_list;
+        while (peer_print)
+        {
+            DEBUG("\nname:      %s\n"
+                  "connected: %d\n"
+                  "is_new:    %d\n",
+                  peer_print->data->name,
+                  peer_print->data->connected,
+                  peer_print->data->is_new);
+
+            peer_print = peer_print->next;
+        }
+        DEBUG("Peer list size: %d.\n", list_size(peer_and_sock.peer_list));
+#endif
+    }
+}
+
+void parse_new_users(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer)
+{
+    size_t peer_buffer_offset = 0;
+    int new_peer_index = 0;
+
+    while (peer_buffer_offset < packet_data_buffer->length)
+    {
+        peer_tuple new_peer = deserialize_peer_data(
+            &(data_buffer){
+                // Add calculated buffer offset to packet_header data buffer
+                // to iterate through peers in received list.
+                .data = packet_data_buffer->data + peer_buffer_offset,
+                .length = packet_data_buffer->length});
+        peer_buffer_offset += new_peer.peer_size;
+
+        // Check if peer already exists, only add non-existing peers
+        if (!find_peer_by_name(peer_and_sock.peer_list, new_peer.peer))
+        {
             printf("INFO: %s joined the chat.\n", new_peer.peer->name);
             list_add(&peer_and_sock.peer_list, new_peer.peer);
 
@@ -448,19 +491,19 @@ void connect_to_new_peers(list_node *peer_list, peer_and_max_fds_tuple peer_and_
  * TODO: Write documentation on how the protocol works.
  */
 void handle_enter_req(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer,
-                      char type, peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
+                      peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
 {
-    if (type == MSG_ENTER_REQ)
-        DEBUG("Handling enter request.\n");
-    else
-        DEBUG("Handling new users.\n");
+    DEBUG("Handling enter request.\n");
+    parse_enter_req(peer_and_sock, packet_data_buffer);
+    propagate_new_peers(peer_and_sock);
+    connect_to_new_peers(peer_and_sock.peer_list, peer_and_max_fds, use_sctp);
+}
 
-    parse_new_peers(peer_and_sock, packet_data_buffer, type);
-
-    // Only propagate new peers on enter request.
-    if (type == MSG_ENTER_REQ)
-        propagate_new_peers(peer_and_sock);
-
+void handle_new_users(peer_list_sock_tuple peer_and_sock, data_buffer *packet_data_buffer,
+                      peer_and_max_fds_tuple peer_and_max_fds, bool use_sctp)
+{
+    DEBUG("Handling new users.\n");
+    parse_new_users(peer_and_sock, packet_data_buffer);
     connect_to_new_peers(peer_and_sock.peer_list, peer_and_max_fds, use_sctp);
 }
 
@@ -566,9 +609,12 @@ void parse_packet(peer_list_sock_tuple peer_and_sock, packet_header *incoming_pa
     switch (incoming_packet->type)
     {
     case MSG_NEW_USERS:
+        handle_new_users(peer_and_sock, packet_data_buffer,
+                         peer_and_max_fds, use_sctp);
+        break;
     case MSG_ENTER_REQ:
         handle_enter_req(peer_and_sock, packet_data_buffer,
-                         incoming_packet->type, peer_and_max_fds, use_sctp);
+                         peer_and_max_fds, use_sctp);
         break;
     case MSG_FAILED:
         handle_failed(peer_and_sock, packet_data_buffer, peer_and_max_fds.peer_fds);

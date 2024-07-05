@@ -50,6 +50,8 @@ class P2PTest(unittest.TestCase):
     def __dump_container_output(self, container: P2PContainer):
         blocking_error_count = 0
 
+        # Try to read from container two times, then quit reading,
+        # all data must be read.
         while blocking_error_count < 2:
             try:
                 self.__read_and_log_container_output(container)
@@ -258,7 +260,7 @@ class P2PTest(unittest.TestCase):
         p2p_containers['p2p_test_07'].p2p_connect(
             p2p_containers['p2p_test_08'].get_container_ip())
 
-        time.sleep(1)
+        time.sleep(5)
         # Connect all clients
         p2p_containers['p2p_test_06'].p2p_connect(
             p2p_containers['p2p_test_01'].get_container_ip())
