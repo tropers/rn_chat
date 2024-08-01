@@ -1,23 +1,53 @@
-# Makefile for chat application
-CC=gcc
-CFLAGS=-g -Wall
-OBJECTS=obj/chat_handler.o obj/main.o
-LIBS=-lpthread
+TARGET_EXEC ?= chat
 
-# --- targets
-all: chat
-chat: $(OBJECTS) 
-	mkdir -p bin/
-	$(CC) $(CFLAGS) -o bin/chat $(OBJECTS) $(LIBS)
+BUILD_DIR ?= ./build
+SRC_DIRS ?= ./src
+ASFLAGS = -Wall
+CFLAGS = -Wall
+CPPFLAGS = -Wall
 
-obj/chat_handler.o: src/chat_handler.c
-	mkdir -p obj/
-	$(CC) $(CFLAGS) -c src/chat_handler.c -o obj/chat_handler.o
+LDFLAGS = -lpthread
 
-obj/main.o: src/main.c
-	mkdir -p obj/
-	$(CC) $(CFLAGS) -c src/main.c -o obj/main.o
+SRCS := $(shell find $(SRC_DIRS) -name *.cpp -or -name *.c -or -name *.s)
+OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
+DEPS := $(OBJS:.o=.d)
 
-# --- remove binary and executable files
+INC_DIRS := $(shell find $(SRC_DIRS) -type d)
+INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
+
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+
+# assembly
+$(BUILD_DIR)/%.s.o: %.s
+	$(MKDIR_P) $(dir $@)
+	$(AS) $(ASFLAGS) -c $< -o $@
+
+# c source
+$(BUILD_DIR)/%.c.o: %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# c++ source
+$(BUILD_DIR)/%.cpp.o: %.cpp
+	$(MKDIR_P) $(dir $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+debug: ASFLAGS += -g
+debug: CFLAGS += -g
+debug: CXXFLAGS += -g
+debug: $(BUILD_DIR)/$(TARGET_EXEC)
+
+.PHONY: clean
+
 clean:
-	rm -f bin/* $(OBJECTS)
+	$(RM) -r $(BUILD_DIR)
+
+docker:
+	docker image build -t p2pchat_test:latest .
+
+-include $(DEPS)
+
+MKDIR_P ?= mkdir -p
