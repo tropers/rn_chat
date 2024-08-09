@@ -33,12 +33,11 @@ class P2PTest(unittest.TestCase):
         for line in buffer.decode('utf-8').split('\n'):
             logger.info('%s: %s', container.container_name, line)
 
-    def __wait_for_string_in_container_stdout(self,
+    def __wait_for_regex_in_container_stdout(self,
                                               container: P2PContainer,
                                               regex: str) -> str:
         """
-        Read from container socket until search string ('string' parameter) is found
-        in the stdout of the container.
+        Read from container socket until it matches the regular expression ('regex' parameter).
         WARNING: Blocks until string is found.
         """
         while not re.search(regex, container.get_stdout_utf8()):
@@ -61,16 +60,16 @@ class P2PTest(unittest.TestCase):
     def __check_container_stdout_contains(self, containers: Dict[str, P2PContainer],
                                           container_name: str, regex: str):
         """
-        Check if the search string ('string' parameter) is found in the stdout of the
-        container. If not, try to read more from the stdout of the container for a specified
+        Check if the stdout of the container matches a regular expression ('regex' parameter).
+        If not, try to read more from the stdout of the container for a specified
         amount of time.
-        If the string is not found in the stdout of the container within a defined timeout,
+        If the stdout does not match the regular expression within a defined timeout,
         the test fails.
         """
         if not re.search(regex, containers[container_name].get_stdout_utf8()):
             try:
                 with TestTimeout(10):
-                    self.__wait_for_string_in_container_stdout(containers[container_name], regex)
+                    self.__wait_for_regex_in_container_stdout(containers[container_name], regex)
                 logger.info('[OKAY] %s: Regex "%s" found in output of container %s.',
                             container_name, regex, container_name)
             except TestTimeoutException as te:
@@ -95,7 +94,7 @@ class P2PTest(unittest.TestCase):
         else:
             try:
                 with TestTimeout(10):
-                    self.__wait_for_string_in_container_stdout(containers[container_name], regex)
+                    self.__wait_for_regex_in_container_stdout(containers[container_name], regex)
             except TestTimeoutException:
                 logger.info('[OKAY] Regex "%s" not found in output of container %s.',
                             regex, container_name)
