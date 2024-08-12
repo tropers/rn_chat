@@ -1,7 +1,7 @@
 #define PORT 6969
 
 #define CHAT_VERSION "v0.1"
-#define INPUT_BUFFER_LEN 256
+#define INPUT_BUFFER_LEN 4096
 #define PORT 6969
 
 /* SCTP */

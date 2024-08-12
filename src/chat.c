@@ -187,8 +187,6 @@ void show_peer_list(chat_application_context *ctx)
 // Initializes the chat handler and runs in infinite loop
 void handle(bool use_sctp, int sctp_hbinterval)
 {
-    char buffer[INPUT_BUFFER_LEN];
-
     chat_application_context ctx = {
         .use_sctp = use_sctp,
         .sctp_hbinterval = sctp_hbinterval};
@@ -215,19 +213,29 @@ void handle(bool use_sctp, int sctp_hbinterval)
 
     // Retreive username
     printf("Please enter username: ");
-    fgets(ctx.user_name, INPUT_BUFFER_LEN, stdin);
+
+    char *buffer;
+    size_t bytes_read = 0;
+    getline(&buffer, &bytes_read, stdin);
+
+    ctx.user_name = malloc(bytes_read);
+    if (!ctx.user_name) {
+        fprintf(stderr, "ERROR: Could not allocate memory for user name, exiting.\n");
+    }
+
+    memcpy(ctx.user_name, buffer, bytes_read);
     chomp(ctx.user_name);
 
     peer *user = malloc(sizeof(peer));
     if (!user)
     {
-        fprintf(stderr, "ERROR: Could allocate memory for local user, exiting.\n");
+        fprintf(stderr, "ERROR: Could not allocate memory for local user, exiting.\n");
         exit(-1);
     }
 
     // Retrieve IP address
     printf("Please enter your IP-address: ");
-    fgets(buffer, INPUT_BUFFER_LEN, stdin);
+    getline(&buffer, &bytes_read, stdin);
     chomp(buffer);
 
     // Retrieve port
@@ -260,12 +268,11 @@ void handle(bool use_sctp, int sctp_hbinterval)
         pthread_create(&heartbeat_thread, NULL, heartbeat_thread_func, &args);
     }
 
-
     // Main loop for grabbing keyboard input
     while (true)
     {
         printf("> ");
-        fgets(buffer, INPUT_BUFFER_LEN, stdin);
+        getline(&buffer, &bytes_read, stdin);
 
         char *splitstr = strtok(buffer, " ");
 
@@ -332,7 +339,7 @@ void handle(bool use_sctp, int sctp_hbinterval)
                 splitstr = strtok(NULL, " ");
             }
 
-            send_message(&ctx, message, 1, user_name);
+            send_message(&ctx, message, true, user_name);
         }
         else if (splitstr[0] == '/')
         {
@@ -354,9 +361,9 @@ void handle(bool use_sctp, int sctp_hbinterval)
             // Remove newline from message
             chomp(message);
 
-            if (strcmp(message, "") != 0) {
+            if (strcmp(message, "")) {
                 printf("%s: %s\n", ctx.user_name, message);
-                send_message(&ctx, message, 0, NULL);
+                send_message(&ctx, message, false, NULL);
             }
         }
     }

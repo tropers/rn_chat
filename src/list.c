@@ -4,6 +4,15 @@
 
 #include "list.h"
 
+/* Destroy a list node */
+void free_list_node(list_node *node) {
+    free(node->data->name);
+    free(node->data);
+    free(node);
+
+    node = NULL;
+}
+
 /* Creates a new list */
 list_node *list_new()
 {
@@ -85,16 +94,13 @@ void list_remove_item(list_node **head, list_node *node, list_node *prev)
     if (node == *head)
     {
         list_node *next = (*head)->next;
-        free((*head)->data);
-        free(*head);
+        free_list_node(*head);
         *head = next;
         return;
     }
 
     prev->next = node->next;
-    free(node->data->name);
-    free(node->data);
-    free(node);
+    free_list_node(node);
     node = NULL;
 }
 
@@ -156,8 +162,7 @@ void list_free(list_node *head)
     while (current)
     {
         next = current->next;
-        free(current->data);
-        free(current);
+        free_list_node(current);
         current = next;
     }
 }

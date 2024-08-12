@@ -21,7 +21,7 @@ typedef struct
     pthread_mutex_t *peer_mutex;
     list_node *peer_list;
 
-    char user_name[INPUT_BUFFER_LEN];
+    char *user_name;
 
     fd_set peer_fds;
     int max_fd;
