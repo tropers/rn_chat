@@ -51,7 +51,6 @@ void list_add(list_node **head, peer *data)
     {
         if (node->data->ip_addr == data->ip_addr)
         {
-
             fprintf(stderr, "WARNING: Couldn't add \"%s\" to list, user already exists.\n", node->data->name);
             return;
         }
@@ -93,6 +92,7 @@ void list_remove_item(list_node **head, list_node *node, list_node *prev)
     }
 
     prev->next = node->next;
+    free(node->data->name);
     free(node->data);
     free(node);
     node = NULL;
