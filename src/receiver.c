@@ -94,7 +94,7 @@ int setup_listener(chat_application_context *ctx, bool use_sctp, int sctp_hbinte
     bzero((char *)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(PORT); // Convert from host to network byteorder
+    serv_addr.sin_port = htons(ctx->user->port); // Convert from host to network byteorder
 
     if (bind(listener_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
@@ -102,7 +102,7 @@ int setup_listener(chat_application_context *ctx, bool use_sctp, int sctp_hbinte
         return -1;
     }
 
-    printf("Listening on port %d...\n", PORT);
+    printf("Listening on port %d...\n", ctx->user->port);
     fflush(stdout);
 
     listen(listener_fd, 5);

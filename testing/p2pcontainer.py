@@ -7,6 +7,7 @@ import os
 import docker
 
 DOCKER_IMAGE = 'p2pchat_test:latest'
+PORT = 8000
 
 class P2PContainer():
     """
@@ -97,6 +98,7 @@ class P2PContainer():
         # Sending chat name and local ip address to container to start the chat application
         self.send_to_container(f'{self.__chat_name}\n')
         self.send_to_container(f'{self.get_container_ip()}\n')
+        self.send_to_container(f'{PORT}\n')
 
     def stop(self):
         """
@@ -110,7 +112,7 @@ class P2PContainer():
         """
         Send chat connect command to container.
         """
-        self.send_to_container(f'/connect {ip_address} 6969\n')
+        self.send_to_container(f'/connect {ip_address} {PORT}\n')
 
     def p2p_list(self):
         """

@@ -218,14 +218,6 @@ void handle(bool use_sctp, int sctp_hbinterval)
     size_t bytes_read = 0;
     getline(&buffer, &bytes_read, stdin);
 
-    ctx.user_name = malloc(bytes_read);
-    if (!ctx.user_name) {
-        fprintf(stderr, "ERROR: Could not allocate memory for user name, exiting.\n");
-    }
-
-    memcpy(ctx.user_name, buffer, bytes_read);
-    chomp(ctx.user_name);
-
     peer *user = malloc(sizeof(peer));
     if (!user)
     {
@@ -233,17 +225,29 @@ void handle(bool use_sctp, int sctp_hbinterval)
         exit(-1);
     }
 
+    user->name = malloc(bytes_read);
+    if (!user->name) {
+        fprintf(stderr, "ERROR: Could not allocate memory for user name, exiting.\n");
+        exit(-1);
+    }
+    memcpy(user->name, buffer, bytes_read);
+    chomp(user->name);
+
     // Retrieve IP address
     printf("Please enter your IP-address: ");
     getline(&buffer, &bytes_read, stdin);
     chomp(buffer);
+    inet_pton(AF_INET, buffer, &(user->ip_addr));
 
     // Retrieve port
-    // TODO
-
-    inet_pton(AF_INET, buffer, &(user->ip_addr));
-    user->name = ctx.user_name;
-    user->port = PORT;
+    printf("Please enter your port: ");
+    getline(&buffer, &bytes_read, stdin);
+    chomp(buffer);
+    if (!isnumber(buffer))
+    {
+        fprintf(stderr, "ERROR: Please provide a valid number as port.");
+    }
+    user->port = atoi(buffer);
     user->connected = true;
     user->is_new = false;
 
@@ -252,6 +256,8 @@ void handle(bool use_sctp, int sctp_hbinterval)
 
     printf("Initializing peer list mutex...\n");
     pthread_mutex_init(ctx.peer_mutex, NULL);
+
+    ctx.user = user;
 
     printf("Starting receiver thread...\n");
 
@@ -325,7 +331,7 @@ void handle(bool use_sctp, int sctp_hbinterval)
 
             // Get username for private message
             char user_name[INPUT_BUFFER_LEN] = {0};
-            strcpy(ctx.user_name, splitstr);
+            strcpy(user->name, splitstr);
 
             char message[strlen(buffer)];
             bzero(message, strlen(buffer));
@@ -362,7 +368,7 @@ void handle(bool use_sctp, int sctp_hbinterval)
             chomp(message);
 
             if (strcmp(message, "")) {
-                printf("%s: %s\n", ctx.user_name, message);
+                printf("%s: %s\n", user->name, message);
                 send_message(&ctx, message, false, NULL);
             }
         }

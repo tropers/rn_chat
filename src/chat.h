@@ -21,7 +21,7 @@ typedef struct
     pthread_mutex_t *peer_mutex;
     list_node *peer_list;
 
-    char *user_name;
+    peer *user; // User of this client, also first peer in the peer list
 
     fd_set peer_fds;
     int max_fd;
