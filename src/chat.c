@@ -208,7 +208,7 @@ void handle(bool use_sctp, int sctp_hbinterval)
     if (!ctx.peer_list)
     {
         fprintf(stderr, "ERROR: Could not initialize peer-list, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     // Retreive username
@@ -222,13 +222,13 @@ void handle(bool use_sctp, int sctp_hbinterval)
     if (!user)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for local user, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     user->name = malloc(bytes_read);
     if (!user->name) {
         fprintf(stderr, "ERROR: Could not allocate memory for user name, exiting.\n");
-        exit(-1);
+        exit(1);
     }
     memcpy(user->name, buffer, bytes_read);
     chomp(user->name);

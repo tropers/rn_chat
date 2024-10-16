@@ -121,7 +121,7 @@ packet_header *receive_packet_header(peer_list_sock_tuple peer_and_sock, peer_an
     if (!packet_header)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for header packet_header, exiting.");
-        exit(-1);
+        exit(1);
     }
 
     bytes_received = receive_from_socket(peer_and_sock.sock, packet_header, sizeof(packet_header));
@@ -172,7 +172,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
     if (!new_peer)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for new peer, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     new_peer->ip_addr = *((uint32_t *)(packet_data_buffer->data + buffer_offset));
@@ -188,7 +188,7 @@ peer_tuple deserialize_peer_data(data_buffer *packet_data_buffer)
     if (!new_peer->name)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for peer name, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     bzero(new_peer->name, name_length + 1);
@@ -215,7 +215,7 @@ data_buffer create_enter_req_data(list_node *peer_list)
     if (!data)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for request data, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     size_t total_length = 0;
@@ -256,7 +256,7 @@ void send_failed(int sock, uint32_t code)
     if (!code_buffer.data)
     {
         printf("ERROR: Couldn't allocate memory for failed message. Exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     // Set error code
@@ -670,7 +670,7 @@ void handle_packet(chat_application_context *ctx, int sock)
         if (!packet_data_buffer.data)
         {
             fprintf(stderr, "ERROR: Could allocate memory for packet_header data buffer, exiting.\n");
-            exit(-1);
+            exit(1);
         }
 
         if (incoming_packet->length > 0)

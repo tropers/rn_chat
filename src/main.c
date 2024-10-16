@@ -29,7 +29,7 @@ void args_sctp(int argc, char **argv)
         else
         {
             printf("ERROR: Wrong format supplied for heartbeat SCTP heartbeat interval!\n");
-            exit(-1);
+            exit(1);
         }
     }
     else
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     else
     {
         printf("Invalid argument \"%s\"\n", argv[1]);
-        args_usage(-1);
+        args_usage(1);
     }
 
     return 0;

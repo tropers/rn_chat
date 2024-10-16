@@ -39,7 +39,7 @@ void list_add(list_node **head, peer *data)
         if (!*head)
         {
             fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory, exiting.\n");
-            exit(-1);
+            exit(1);
         }
 
         (*head)->next = NULL;
@@ -69,7 +69,7 @@ void list_add(list_node **head, peer *data)
             if (!node->next)
             {
                 fprintf(stderr, "ERROR: Couldn't allocate memory for list, not enough memory, exiting.\n");
-                exit(-1);
+                exit(1);
             }
 
             node->next->next = NULL;

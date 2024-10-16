@@ -126,7 +126,7 @@ void *receiver_thread_func(void *args)
     if (listener_fd <= 0)
     {
         fprintf(stderr, "ERROR: Listener could not be initialized, exiting.\n");
-        exit(-1);
+        exit(1);
     }
 
     struct timeval timeout = {0, 50000};
