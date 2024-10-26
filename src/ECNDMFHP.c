@@ -117,38 +117,38 @@ void remove_peer_and_close_socket(peer_list_sock_tuple peer_and_sock, peer_and_m
 packet_header *receive_packet_header(peer_list_sock_tuple peer_and_sock, peer_and_max_fds_tuple *peer_and_max_fds)
 {
     size_t bytes_received = 0;
-    packet_header *packet_header = malloc(sizeof(packet_header));
-    if (!packet_header)
+    packet_header *header = malloc(sizeof(packet_header));
+    if (!header)
     {
         fprintf(stderr, "ERROR: Could not allocate memory for header packet_header, exiting.");
         exit(1);
     }
 
-    bytes_received = receive_from_socket(peer_and_sock.sock, packet_header, sizeof(packet_header));
+    bytes_received = receive_from_socket(peer_and_sock.sock, header, sizeof(packet_header));
     if (bytes_received == 0)
     {
         remove_peer_and_close_socket(peer_and_sock, peer_and_max_fds);
         return NULL;
     }
 
-    packet_header->length = ntohl(packet_header->length);
-    DEBUG("0x%02x, %c, 0x%08x\n", packet_header->version, packet_header->type, packet_header->length);
+    header->length = ntohl(header->length);
+    DEBUG("0x%02x, %c, 0x%08x\n", header->version, header->type, header->length);
 
-    return packet_header;
+    return header;
 }
 
-data_buffer serialize_peer_data(peer *peer)
+data_buffer serialize_peer_data(peer *p)
 {
     size_t buffer_offset = 0;
-    uint16_t name_length = (uint16_t)strlen(peer->name) + 1; // + 1 for null-terminator
+    uint16_t name_length = (uint16_t)strlen(p->name) + 1; // + 1 for null-terminator
     char *serialized_peer = malloc(sizeof(peer) + name_length);
 
     // Copy IP-Address to packet_header-data
-    memcpy(serialized_peer + buffer_offset, (char *)&peer->ip_addr, IP_ADDR_LEN);
+    memcpy(serialized_peer + buffer_offset, (char *)&p->ip_addr, IP_ADDR_LEN);
     buffer_offset += IP_ADDR_LEN;
 
     // Copy port
-    memcpy(serialized_peer + buffer_offset, (char *)&peer->port, PORT_LEN);
+    memcpy(serialized_peer + buffer_offset, (char *)&p->port, PORT_LEN);
     buffer_offset += PORT_LEN;
 
     // Copy length of name
@@ -156,7 +156,7 @@ data_buffer serialize_peer_data(peer *peer)
     buffer_offset += NAME_LEN_LEN;
 
     // Copy name
-    memcpy(serialized_peer + buffer_offset, peer->name, (int)name_length);
+    memcpy(serialized_peer + buffer_offset, p->name, (int)name_length);
     buffer_offset += name_length;
 
     return (data_buffer){

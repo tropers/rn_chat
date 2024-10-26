@@ -35,14 +35,14 @@ void args_sctp(int argc, char **argv)
     else
     {
         // If argument isn't passed correctly, print usage
-        printf(usage);
+        printf("%s", usage);
         exit(0);
     }
 }
 
 void args_usage(int return_code)
 {
-    printf(usage);
+    printf("%s", usage);
     exit(return_code);
 }
 

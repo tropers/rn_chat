@@ -1,6 +1,4 @@
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <unistd.h>
 #include <time.h>
 #include <pthread.h>
@@ -52,7 +50,7 @@ void *heartbeat_thread_func(void *args)
 
     while (true)
     {
-        sleep(0.5);
+        usleep(500 * 1000); // 500 ms
 
         new_time = time(0);
         double total_diff = difftime(new_time, base_time);
