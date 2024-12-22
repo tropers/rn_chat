@@ -1,17 +1,20 @@
 import signal
 
+
 class TestTimeoutException(Exception):
     """
     Gets raised by TestTimeout when the timeout occurs.
     """
 
+
 class TestTimeout:
     """
     Implements a simple timeout mechanism for testing purposes.
     """
+
     def __init__(self, seconds, error_message=None):
         if error_message is None:
-            error_message = f'Test timed out after {seconds}s.'
+            error_message = f"Test timed out after {seconds}s."
 
         self.seconds = seconds
         self.error_message = error_message

@@ -6,25 +6,26 @@ import os
 
 import docker
 
-DOCKER_IMAGE = 'p2pchat_test:latest'
+DOCKER_IMAGE = "p2pchat_test:latest"
 PORT = 8000
 
-class P2PContainer():
+
+class P2PContainer:
     """
     P2PContainer implements a testing container for the p2p chat application.
     """
+
     def __init__(self, client: docker.Client, container_name: str, chat_name: str):
         self.__client = client
         self.container_name = container_name
         self.__container = self.__client.create_container(
-            DOCKER_IMAGE,
-            name=self.container_name,
-            stdin_open=True,
-            tty=True)
+            DOCKER_IMAGE, name=self.container_name, stdin_open=True, tty=True
+        )
 
         # Create socket to interact with testing container
-        self.__socket = self.__client.attach_socket(self.__container,
-            {'stdin': 1, 'stdout': 1, 'stderr': 1, 'stream':1})
+        self.__socket = self.__client.attach_socket(
+            self.__container, {"stdin": 1, "stdout": 1, "stderr": 1, "stream": 1}
+        )
         self.__socket._sock.setblocking(False)
 
         # stdout buffer contains all previously read output from the container
@@ -41,7 +42,7 @@ class P2PContainer():
         """
         convert message string to bytearray.
         """
-        return bytes(message_string, 'utf-8')
+        return bytes(message_string, "utf-8")
 
     def send_to_container(self, msg: str):
         """
@@ -68,7 +69,7 @@ class P2PContainer():
         """
         Returns the stdout buffer as a UTF-8 string.
         """
-        return self.__stdout_buffer.decode('utf-8')
+        return self.__stdout_buffer.decode("utf-8")
 
     def get_container(self):
         """
@@ -80,14 +81,15 @@ class P2PContainer():
         """
         Get the containers id.
         """
-        return self.__container['Id']
+        return self.__container["Id"]
 
     def get_container_ip(self) -> str:
         """
         Get the containers IP address.
         """
-        return self.__client.containers(filters={'id': self.get_container_id()})[0] \
-                ['NetworkSettings']['Networks']['bridge']['IPAddress']
+        return self.__client.containers(filters={"id": self.get_container_id()})[0][
+            "NetworkSettings"
+        ]["Networks"]["bridge"]["IPAddress"]
 
     def start(self):
         """
@@ -96,9 +98,9 @@ class P2PContainer():
         self.__client.start(self.__container)
 
         # Sending chat name and local ip address to container to start the chat application
-        self.send_to_container(f'{self.__chat_name}\n')
-        self.send_to_container(f'{self.get_container_ip()}\n')
-        self.send_to_container(f'{PORT}\n')
+        self.send_to_container(f"{self.__chat_name}\n")
+        self.send_to_container(f"{self.get_container_ip()}\n")
+        self.send_to_container(f"{PORT}\n")
 
     def stop(self):
         """
@@ -112,22 +114,22 @@ class P2PContainer():
         """
         Send chat connect command to container.
         """
-        self.send_to_container(f'/connect {ip_address} {PORT}\n')
+        self.send_to_container(f"/connect {ip_address} {PORT}\n")
 
     def p2p_list(self):
         """
         Send chat list command to container.
         """
-        self.send_to_container('/list\n')
+        self.send_to_container("/list\n")
 
     def p2p_send_message(self, msg: str):
         """
         Send message to chat client.
         """
-        self.send_to_container(f'{msg}\n')
+        self.send_to_container(f"{msg}\n")
 
     def p2p_quit(self):
         """
         Quit chat application and stop container.
         """
-        self.send_to_container('/quit\n')
+        self.send_to_container("/quit\n")
