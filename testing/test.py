@@ -28,7 +28,7 @@ class P2PTest(unittest.TestCase):
     stdin / stdout.
     """
 
-    client = docker.from_env()
+    client = docker.from_env().api
 
     def __read_and_log_container_output(self, container: P2PContainer):
         buffer = container.read_from_container(READ_BYTES)
@@ -99,12 +99,14 @@ class P2PTest(unittest.TestCase):
                 regex,
                 container_name,
             )
-            self.fail()
 
             # If test fails, dump all output from all containers:
             for name, container in containers.items():
                 if name != container_name:
                     self.__dump_container_output(container)
+
+            self.fail()
+
         else:
             try:
                 with TestTimeout(10):

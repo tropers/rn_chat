@@ -15,7 +15,7 @@ class P2PContainer:
     P2PContainer implements a testing container for the p2p chat application.
     """
 
-    def __init__(self, client: docker.Client, container_name: str, chat_name: str):
+    def __init__(self, client: docker.api.APIClient, container_name: str, chat_name: str):
         self.__client = client
         self.container_name = container_name
         self.__container = self.__client.create_container(
